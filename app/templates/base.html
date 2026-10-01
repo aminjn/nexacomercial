@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Nexa Backlink{% endblock %}</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#6b7280;--line:#e5e7eb;--acc:#2563eb;--ok:#059669;--err:#dc2626;--warn:#d97706}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#171b23;--fg:#e5e7eb;--muted:#9ca3af;--line:#2a2f3a;--acc:#60a5fa;--ok:#34d399;--err:#f87171;--warn:#fbbf24}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 Vazirmatn,Tahoma,"Segoe UI",sans-serif}
+nav{display:flex;gap:4px;flex-wrap:wrap;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+nav b{margin-left:16px}nav a{color:var(--fg);text-decoration:none;padding:6px 10px;border-radius:6px}nav a:hover{background:var(--bg)}
+main{max-width:1250px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:16px;overflow-x:auto}
+h2{font-size:16px;margin:0 0 10px}table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}th{color:var(--muted);font-weight:normal}
+.ok{color:var(--ok)}.error,.paused{color:var(--err)}.dry_run{color:var(--warn)}.muted{color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}.stat b{display:block;font-size:22px}
+input,select,textarea{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
+textarea{min-height:70px}label{display:block;margin-bottom:8px}label span{display:block;color:var(--muted);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+button,.btn{font:inherit;background:var(--acc);color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;text-decoration:none;display:inline-block}
+button.sec{background:transparent;color:var(--acc);border:1px solid var(--acc)}button.danger{background:var(--err)}
+form.inline{display:inline}.msg{background:var(--card);border-right:4px solid var(--acc);padding:10px;margin-bottom:16px;border-radius:6px}
+.check{display:inline-flex;gap:4px;align-items:center;margin-left:12px}.check input{width:auto}
+code{direction:ltr;unicode-bidi:embed}.ltr{direction:ltr;text-align:left}
+</style>
+</head>
+<body>
+<nav><b>Nexa Backlink</b>
+<a href="/">داشبورد</a><a href="/sites">سایت‌ها</a><a href="/accounts">اکانت‌ها</a><a href="/campaigns">کمپین‌ها و زمان‌بندی</a><a href="/publications">انتشارها</a>
+{% if settings.dry_run %}<span class="dry_run">● حالت آزمایشی (DRY RUN)</span>{% endif %}
+</nav>
+<main>
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+{% block body %}{% endblock %}
+</main>
+</body></html>

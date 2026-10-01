@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card"><h2>اکانت‌ها ({{ rows|length }})</h2>
+<form method="get" class="grid" style="max-width:600px;margin-bottom:10px">
+  <select name="kind"><option value="">همه‌ی پلتفرم‌ها</option>{% for k in kinds %}<option {{ 'selected' if f_kind == k }}>{{ k }}</option>{% endfor %}</select>
+  <select name="tag"><option value="">همه‌ی گروه‌ها</option>{% for t in tags %}<option {{ 'selected' if f_tag == t }}>{{ t }}</option>{% endfor %}</select>
+  <button>فیلتر</button>
+</form>
+<table>
+  <tr><th>#</th><th>نام</th><th>پلتفرم</th><th>گروه</th><th>اطلاعات (مخفی)</th><th>فاصله / سقف روزانه</th><th>انتشار</th><th>آخرین استفاده</th><th>وضعیت</th><th></th></tr>
+  {% for r in rows %}{% set a = r.a %}
+  <tr><td>{{ a.id }}</td><td>{{ a.label }}</td><td>{{ a.kind }} <span class="muted">{{ 'مقاله' if a.category == 'article' else 'سوشیال' }}</span></td><td>{{ a.tag }}</td>
+    <td class="ltr muted" style="font-size:12px">{% for k, v in r.creds.items() %}{{ k }}={{ v }}<br>{% endfor %}</td>
+    <td>{{ a.min_hours_between }}h / {{ a.daily_limit }}</td><td>{{ a.published_count }}</td><td>{{ a.last_used_at|local }}</td>
+    <td>{% if not a.enabled %}<span class="muted">خاموش</span>{% elif a.status == 'paused' %}<span class="paused" title="{{ a.last_error }}">متوقف (خطا)</span><div class="muted" style="max-width:240px;font-size:12px">{{ a.last_error[:160] }}</div>{% else %}<span class="ok">فعال</span>{% endif %}</td>
+    <td style="white-space:nowrap">
+      <form class="inline" method="post" action="/accounts/{{ a.id }}/test" onsubmit="return confirm('یک پست واقعی منتشر می‌شود. ادامه؟')">
+        <select name="site_id" style="width:auto">{% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select><button class="sec">تست</button></form>
+      {% if a.status == 'paused' %}<form class="inline" method="post" action="/accounts/{{ a.id }}/resume"><button class="sec">ادامه</button></form>{% endif %}
+      <form class="inline" method="post" action="/accounts/{{ a.id }}/toggle"><button class="sec">{{ 'خاموش' if a.enabled else 'روشن' }}</button></form>
+      <form class="inline" method="post" action="/accounts/{{ a.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="danger">حذف</button></form>
+    </td></tr>
+  {% else %}<tr><td colspan="10" class="muted">هنوز اکانتی اضافه نشده.</td></tr>{% endfor %}
+</table></div>
+
+<div class="card"><h2>افزودن / ویرایش اکانت</h2>
+<p class="muted">همه‌ی پلتفرم‌ها از طریق API رسمی خودشان کار می‌کنند؛ برای هر اکانت توکن/کلید API همان اکانت را وارد کن. در ویرایش، فیلد خالی یعنی مقدار قبلی حفظ شود.</p>
+<form method="post" action="/accounts">
+  <div class="grid">
+    <label><span>شناسه‌ی اکانت برای ویرایش (خالی = جدید)</span><input name="id" type="number"></label>
+    <label><span>پلتفرم *</span><select name="kind" id="kind" required>{% for k, v in kinds.items() %}<option value="{{ k }}">{{ k }} — {{ 'مقاله/بک‌لینک' if v.category == 'article' else 'سوشیال' }}</option>{% endfor %}</select></label>
+    <label><span>نام اکانت</span><input name="label"></label>
+    <label><span>گروه (برای انتخاب در کمپین)</span><input name="tag" list="tags"><datalist id="tags">{% for t in tags %}<option>{{ t }}</option>{% endfor %}</datalist></label>
+    <label><span>حداقل فاصله بین دو پست (ساعت)</span><input name="min_hours_between" type="number" step="0.5" value="12"></label>
+    <label><span>سقف پست روزانه این اکانت</span><input name="daily_limit" type="number" value="3"></label>
+  </div>
+  <div class="grid" id="fields"></div>
+  <label><span>یادداشت</span><input name="notes"></label>
+  <button>ذخیره</button>
+</form></div>
+
+<div class="card"><h2>ورود گروهی اکانت‌ها (CSV یا JSON)</h2>
+<p class="muted">ستون‌های <code>label, kind, tag, min_hours_between, daily_limit</code> تنظیمات اکانت‌اند و <b>بقیه‌ی ستون‌ها</b> اطلاعات ورود همان پلتفرم (مثل <code>bot_token, chat_id</code>). در یک فایل می‌توانی چند پلتفرم مختلف داشته باشی؛ ستون‌های بی‌ربط را خالی بگذار.</p>
+<form method="post" action="/accounts/import" enctype="multipart/form-data">
+  <textarea name="text" class="ltr" placeholder="label,kind,tag,bot_token,chat_id,handle,app_password&#10;tg-1,telegram,shop,123:ABC,@channel1,,&#10;bsky-1,bluesky,shop,,,me.bsky.social,xxxx-xxxx-xxxx-xxxx"></textarea>
+  <div class="grid" style="margin:8px 0"><input type="file" name="file" accept=".csv,.json"><input name="tag" placeholder="گروه پیش‌فرض برای ردیف‌های بدون گروه"></div>
+  <button>ورود</button>
+</form></div>
+
+<script>
+const KINDS = {{ kinds|tojson }};
+const kindSel = document.getElementById('kind'), box = document.getElementById('fields');
+function draw(){
+  box.innerHTML = '';
+  for (const [name, req, hint] of KINDS[kindSel.value].fields){
+    const l = document.createElement('label');
+    const secret = /token|secret|password|key/.test(name);
+    l.innerHTML = `<span>${name}${req ? ' *' : ''} <i>${hint || ''}</i></span><input class="ltr" name="cred_${name}" type="${secret ? 'password' : 'text'}" autocomplete="off">`;
+    box.appendChild(l);
+  }
+}
+kindSel.addEventListener('change', draw); draw();
+</script>
+{% endblock %}

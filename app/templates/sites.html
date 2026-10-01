@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card"><h2>سایت‌ها</h2>
+<table>
+  <tr><th>نام</th><th>آدرس</th><th>زبان</th><th>کلمات کلیدی</th><th>صفحات عمقی</th><th>انتشار موفق</th><th></th></tr>
+  {% for s in sites %}
+  <tr><td>{{ s.name }} {% if not s.enabled %}<span class="muted">(غیرفعال)</span>{% endif %}</td><td class="ltr"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a></td>
+    <td>{{ s.language }}</td><td>{{ (s.keywords or [])|join('، ') }}</td><td>{{ (s.pages or [])|length }}</td><td>{{ counts[s.id] }}</td>
+    <td style="white-space:nowrap"><a class="btn" href="/sites?edit={{ s.id }}">ویرایش</a>
+      <form class="inline" method="post" action="/sites/{{ s.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="danger">حذف</button></form></td></tr>
+  {% else %}<tr><td colspan="7" class="muted">هنوز سایتی اضافه نشده.</td></tr>{% endfor %}
+</table></div>
+
+<div class="card"><h2>{{ 'ویرایش «' ~ current.name ~ '»' if current else 'افزودن سایت' }}</h2>
+<form method="post" action="/sites">
+  {% if current %}<input type="hidden" name="id" value="{{ current.id }}">{% endif %}
+  <div class="grid">
+    <label><span>نام برند *</span><input name="name" required value="{{ current.name if current }}"></label>
+    <label><span>آدرس سایت *</span><input name="url" class="ltr" required placeholder="https://example.com" value="{{ current.url if current }}"></label>
+    <label><span>زبان محتوا</span><input name="language" value="{{ current.language if current else 'fa' }}" placeholder="fa / en / ar / tr"></label>
+    <label><span>حوزه‌ی کاری</span><input name="niche" value="{{ current.niche if current }}"></label>
+    <label><span>تصویر پیش‌فرض (برای اینستاگرام/پینترست)</span><input name="image_url" class="ltr" value="{{ current.image_url if current }}"></label>
+  </div>
+  <label><span>توضیح سایت (هوش مصنوعی از این برای نوشتن استفاده می‌کند)</span><textarea name="description">{{ current.description if current }}</textarea></label>
+  <div class="grid">
+    <label><span>کلمات کلیدی (با کاما جدا کن)</span><textarea name="keywords">{{ (current.keywords or [])|join(', ') if current }}</textarea></label>
+    <label><span>انکرتکست‌های دلخواه (اختیاری)</span><textarea name="anchors">{{ (current.anchors or [])|join(', ') if current }}</textarea></label>
+    <label><span>صفحات عمقی که لینک بگیرند (هر خط یک آدرس)</span><textarea name="pages" class="ltr">{% if current %}{% for p in current.pages or [] %}{{ p.url }}
+{% endfor %}{% endif %}</textarea></label>
+  </div>
+  <label><span>لحن / سبک نوشتن (اختیاری)</span><input name="style" value="{{ current.style if current }}"></label>
+  <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if not current or current.enabled }}> فعال</label>
+  <button>ذخیره</button> {% if current %}<a href="/sites">انصراف</a>{% endif %}
+</form></div>
+
+<div class="card"><h2>ورود گروهی سایت‌ها (CSV یا JSON)</h2>
+<p class="muted">ستون‌ها: <code>name,url,language,niche,description,keywords,anchors,pages,image_url,style</code> — داخل keywords/pages با <code>|</code> جدا کن.</p>
+<form method="post" action="/sites/import" enctype="multipart/form-data">
+  <textarea name="text" class="ltr" placeholder="name,url,language,keywords&#10;Shop,https://shop.com,fa,خرید لپ تاپ|لپ تاپ گیمینگ"></textarea>
+  <input type="file" name="file" accept=".csv,.json" style="margin:8px 0">
+  <button>ورود</button>
+</form></div>
+{% endblock %}

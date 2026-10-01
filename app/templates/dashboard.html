@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="stats card" style="border:0;background:none;padding:0">
+  <div class="stat"><span class="muted">سایت‌ها</span><b>{{ stats.sites }}</b></div>
+  <div class="stat"><span class="muted">اکانت‌های فعال</span><b>{{ stats.accounts_ok }} / {{ stats.accounts }}</b></div>
+  <div class="stat"><span class="muted">اکانت‌های متوقف</span><b class="{{ 'paused' if stats.accounts_paused }}">{{ stats.accounts_paused }}</b></div>
+  <div class="stat"><span class="muted">انتشار امروز</span><b>{{ stats.today }}</b></div>
+  <div class="stat"><span class="muted">کل انتشار</span><b>{{ stats.published }}</b></div>
+  <div class="stat"><span class="muted">بک‌لینک زنده</span><b class="ok">{{ stats.live }}</b></div>
+</div>
+
+<div class="card">
+  <h2>کمپین‌ها</h2>
+  <form class="inline" method="post" action="/tick"><button>اجرای کمپین‌های سررسیده</button></form>
+  <form class="inline" method="post" action="/tick?dry=true"><button class="sec">پیش‌نمایش (بدون انتشار)</button></form>
+  <form class="inline" method="post" action="/verify"><button class="sec">بررسی بک‌لینک‌ها</button></form>
+  <table style="margin-top:10px">
+    <tr><th>کمپین</th><th>سایت</th><th>اکانت‌ها</th><th>امروز</th><th>بازه</th><th>ساعت فعال</th><th>اجرای بعدی</th><th>وضعیت</th></tr>
+    {% for r in rows %}
+    <tr><td><a href="/campaigns?edit={{ r.c.id }}">{{ r.c.name }}</a></td><td>{{ r.site.name if r.site else '—' }}</td>
+      <td>{{ r.accounts }}</td><td>{{ r.today }} / {{ r.c.daily_limit }}</td>
+      <td>{{ r.c.interval_min_minutes }}–{{ r.c.interval_max_minutes }} دقیقه</td>
+      <td>{{ r.c.active_hours_start }}–{{ r.c.active_hours_end }}</td><td>{{ r.c.next_run_at|local }}</td>
+      <td>{% if not r.c.enabled %}<span class="muted">غیرفعال</span>{% elif r.in_window %}<span class="ok">فعال</span>{% else %}<span class="muted">خارج از بازه</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="8" class="muted">هنوز کمپینی نساخته‌ای. اول <a href="/sites">سایت</a> و <a href="/accounts">اکانت</a> اضافه کن، بعد <a href="/campaigns">کمپین</a> بساز.</td></tr>{% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>آخرین انتشارها</h2>
+  {% include "_pubs.html" %}
+</div>
+
+<div class="card"><h2>لاگ</h2>
+  <table>{% for l in logs %}<tr><td class="muted" style="white-space:nowrap">{{ l.created_at|local }}</td><td class="{{ l.level }}">{{ l.message }}</td></tr>{% endfor %}</table>
+</div>
+{% endblock %}

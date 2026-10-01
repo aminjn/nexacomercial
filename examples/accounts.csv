@@ -1,0 +1,5 @@
+label,kind,tag,min_hours_between,daily_limit,bot_token,chat_id,handle,app_password,instance,access_token,author_name
+tg-shop,telegram,shop,6,4,123456:ABC-your-bot-token,@shop_channel,,,,,
+bsky-shop,bluesky,shop,8,3,,,shop.bsky.social,xxxx-xxxx-xxxx-xxxx,,,
+masto-shop,mastodon,shop,8,3,,,,,https://mastodon.social,your-token,
+telegraph-1,telegraph,shop,12,2,,,,,,,Shop Blog

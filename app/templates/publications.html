@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card"><h2>انتشارها</h2>
+<form method="get" class="grid" style="max-width:600px;margin-bottom:10px">
+  <select name="site_id"><option value="0">همه‌ی سایت‌ها</option>{% for id, s in sites.items() %}<option value="{{ id }}" {{ 'selected' if f_site == id }}>{{ s.name }}</option>{% endfor %}</select>
+  <select name="status"><option value="">همه‌ی وضعیت‌ها</option>{% for st in ['ok','error','dry_run'] %}<option {{ 'selected' if f_status == st }}>{{ st }}</option>{% endfor %}</select>
+  <button>فیلتر</button>
+</form>
+{% include "_pubs.html" %}
+</div>
+{% endblock %}

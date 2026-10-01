@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card"><h2>کمپین‌ها</h2>
+<table>
+  <tr><th>نام</th><th>سایت</th><th>محتوا</th><th>اکانت‌ها</th><th>بازه‌ی زمانی</th><th>روزها / ساعت</th><th>سقف</th><th>اجرای بعدی</th><th></th></tr>
+  {% for c in campaigns %}
+  <tr><td>{{ c.name }} {% if not c.enabled %}<span class="muted">(غیرفعال)</span>{% endif %}</td><td>{{ sites[c.site_id].name if c.site_id in sites else '—' }}</td>
+    <td>{{ {'both':'مقاله + سوشیال','article':'فقط مقاله','social':'فقط سوشیال'}[c.content_mode] }}</td>
+    <td class="muted">{% if c.account_ids %}{{ c.account_ids|length }} اکانت{% endif %}{% if c.account_tag %} گروه «{{ c.account_tag }}»{% endif %}{% if c.kinds %} [{{ c.kinds|join(', ') }}]{% endif %}{% if not c.account_ids and not c.account_tag and not c.kinds %}همه{% endif %}</td>
+    <td>هر {{ c.interval_min_minutes }} تا {{ c.interval_max_minutes }} دقیقه</td>
+    <td>{{ c.days_of_week|length }} روز، {{ c.active_hours_start }}–{{ c.active_hours_end }}{% if c.start_date or c.end_date %}<div class="muted">{{ c.start_date or '' }} تا {{ c.end_date or '' }}</div>{% endif %}</td>
+    <td>{{ c.daily_limit }}/روز{% if c.total_limit %}، کل {{ c.total_limit }}{% endif %}</td><td>{{ c.next_run_at|local }}</td>
+    <td style="white-space:nowrap"><a class="btn" href="/campaigns?edit={{ c.id }}">ویرایش</a>
+      <form class="inline" method="post" action="/campaigns/{{ c.id }}/preview"><button class="sec">پیش‌نمایش</button></form>
+      <form class="inline" method="post" action="/campaigns/{{ c.id }}/run" onsubmit="return confirm('یک مورد واقعی منتشر می‌شود. ادامه؟')"><button class="sec">انتشار الان</button></form>
+      <form class="inline" method="post" action="/campaigns/{{ c.id }}/toggle"><button class="sec">{{ 'توقف' if c.enabled else 'شروع' }}</button></form>
+      <form class="inline" method="post" action="/campaigns/{{ c.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="danger">حذف</button></form></td></tr>
+  {% else %}<tr><td colspan="9" class="muted">هنوز کمپینی نیست.</td></tr>{% endfor %}
+</table></div>
+
+{% set c = current %}
+<div class="card"><h2>{{ 'ویرایش «' ~ c.name ~ '»' if c else 'کمپین جدید' }}</h2>
+{% if not sites %}<p class="error">اول یک <a href="/sites">سایت</a> اضافه کن.</p>{% else %}
+<form method="post" action="/campaigns">
+  {% if c %}<input type="hidden" name="id" value="{{ c.id }}">{% endif %}
+  <div class="grid">
+    <label><span>نام کمپین *</span><input name="name" required value="{{ c.name if c }}"></label>
+    <label><span>سایت *</span><select name="site_id">{% for id, s in sites.items() %}<option value="{{ id }}" {{ 'selected' if c and c.site_id == id }}>{{ s.name }}</option>{% endfor %}</select></label>
+    <label><span>نوع محتوا</span><select name="content_mode">{% for k, v in [('both','مقاله + سوشیال'),('article','فقط مقاله‌ی بک‌لینک'),('social','فقط پست سوشیال')] %}<option value="{{ k }}" {{ 'selected' if c and c.content_mode == k }}>{{ v }}</option>{% endfor %}</select></label>
+    <label><span>سهم مقاله در حالت ترکیبی (۰ تا ۱)</span><input name="article_ratio" type="number" step="0.05" min="0" max="1" value="{{ c.article_ratio if c else 0.4 }}"></label>
+  </div>
+  <h2 style="margin-top:10px">زمان‌بندی</h2>
+  <div class="grid">
+    <label><span>حداقل فاصله‌ی دو انتشار (دقیقه)</span><input name="interval_min_minutes" type="number" min="1" value="{{ c.interval_min_minutes if c else 120 }}"></label>
+    <label><span>حداکثر فاصله (دقیقه) — زمان دقیق تصادفی بین این دو</span><input name="interval_max_minutes" type="number" min="1" value="{{ c.interval_max_minutes if c else 300 }}"></label>
+    <label><span>ساعت شروع فعالیت</span><input name="active_hours_start" type="number" min="0" max="23" value="{{ c.active_hours_start if c else 8 }}"></label>
+    <label><span>ساعت پایان فعالیت</span><input name="active_hours_end" type="number" min="0" max="24" value="{{ c.active_hours_end if c else 23 }}"></label>
+    <label><span>تاریخ شروع (اختیاری)</span><input name="start_date" type="date" value="{{ c.start_date or '' if c }}"></label>
+    <label><span>تاریخ پایان (اختیاری)</span><input name="end_date" type="date" value="{{ c.end_date or '' if c }}"></label>
+    <label><span>سقف انتشار روزانه</span><input name="daily_limit" type="number" min="1" value="{{ c.daily_limit if c else 4 }}"></label>
+    <label><span>سقف کل (۰ = بی‌نهایت)</span><input name="total_limit" type="number" min="0" value="{{ c.total_limit if c else 0 }}"></label>
+  </div>
+  <div style="margin:6px 0 12px"><span class="muted">روزهای فعال: </span>{% for d in weekdays %}<label class="check"><input type="checkbox" name="days_of_week" value="{{ loop.index0 }}" {{ 'checked' if not c or loop.index0 in c.days_of_week }}>{{ d }}</label>{% endfor %}</div>
+
+  <h2>کدام اکانت‌ها؟ <span class="muted" style="font-size:12px">(هیچ‌کدام را انتخاب نکنی = همه‌ی اکانت‌های فعال)</span></h2>
+  <div class="grid">
+    <label><span>گروه اکانت</span><select name="account_tag"><option value="">—</option>{% for t in tags %}<option {{ 'selected' if c and c.account_tag == t }}>{{ t }}</option>{% endfor %}</select></label>
+    <label><span>فقط این پلتفرم‌ها</span><select name="kinds" multiple size="5">{% for k in kinds %}<option {{ 'selected' if c and k in c.kinds }}>{{ k }}</option>{% endfor %}</select></label>
+    <label><span>یا اکانت‌های مشخص</span><select name="account_ids" multiple size="5">{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if c and a.id in c.account_ids }}>#{{ a.id }} {{ a.label }} ({{ a.kind }})</option>{% endfor %}</select></label>
+  </div>
+  <label><span>دستور اضافه برای هوش مصنوعی (اختیاری) — مثلاً «روی تخفیف پاییزه تمرکز کن»</span><textarea name="extra_instructions">{{ c.extra_instructions if c }}</textarea></label>
+  <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if not c or c.enabled }}> فعال</label>
+  <button>ذخیره</button> {% if c %}<a href="/campaigns">انصراف</a>{% endif %}
+</form>{% endif %}</div>
+{% endblock %}
