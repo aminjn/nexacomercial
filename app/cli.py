@@ -32,6 +32,7 @@ def main() -> None:
     p.add_argument("--site", type=int, default=0)
     p.add_argument("--dry-run", action="store_true")
     sub.add_parser("verify", help="re-check all backlinks")
+    sub.add_parser("llm-test", help="check the connection to the AI model")
     p = sub.add_parser("list", help="recent publications")
     p.add_argument("--limit", type=int, default=30)
 
@@ -55,6 +56,16 @@ def main() -> None:
     elif a.cmd == "test":
         r = engine.test_account(a.account_id, a.site or None, dry_run=a.dry_run)
         print(f"[{r.status}] {r.url or r.error}")
+    elif a.cmd == "llm-test":
+        from .config import settings
+        from .llm import get_llm, ollama_models
+        print(f"provider={settings.llm_provider} url={settings.llm_base_url} model={settings.llm_model}")
+        if settings.llm_provider == "ollama":
+            models = ollama_models(settings.llm_base_url, settings.llm_api_key)
+            print("models on server:", ", ".join(models) or "(none)")
+            if settings.llm_model not in models and f"{settings.llm_model}:latest" not in models:
+                print(f"!! model '{settings.llm_model}' is not pulled on the server: ollama pull {settings.llm_model}")
+        print("reply:", get_llm().complete("Answer in one short sentence.", "سلام، حالت چطوره؟"))
     elif a.cmd == "verify":
         print("checked:", engine.verify_links(max_age_hours=0))
     elif a.cmd == "list":

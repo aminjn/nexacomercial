@@ -19,11 +19,12 @@ class Settings(BaseSettings):
     # key is generated once and stored in <data_dir>/secret.key — back that file up.
     secret_key: str = ""
 
-    # LLM provider: "openai" (any OpenAI-compatible server: Ollama, vLLM, OpenRouter...),
-    # "anthropic" (official Claude API) or "fake" (deterministic text for tests/dry-runs).
-    llm_provider: str = "openai"
-    llm_base_url: str = "http://host.docker.internal:11434/v1"
-    llm_api_key: str = "ollama"
+    # LLM provider: "ollama" (your own Ollama server, e.g. http://1.2.3.4:11434; api_key optional, sent as Bearer),
+    # "openai" (any OpenAI-compatible API: OpenRouter, vLLM...), "anthropic" (official Claude API)
+    # or "fake" (deterministic text for tests/dry-runs).
+    llm_provider: str = "ollama"
+    llm_base_url: str = "http://localhost:11434"
+    llm_api_key: str = ""
     llm_model: str = "qwen2.5:14b"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-5-5"

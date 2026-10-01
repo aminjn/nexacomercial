@@ -6,8 +6,10 @@
 set -euo pipefail
 
 REGISTRY_MIRROR="${REGISTRY_MIRROR:-https://docker.arvancloud.ir}"
-# Local Ollama model to pull ("" = skip Ollama and use an external API instead)
-OLLAMA_MODEL="${OLLAMA_MODEL-qwen2.5:7b}"
+# Your Ollama server (outside Arvan) and a model already pulled there. Can also be set later in .env.
+OLLAMA_URL="${OLLAMA_URL:-}"        # e.g. http://1.2.3.4:11434
+OLLAMA_MODEL="${OLLAMA_MODEL:-}"    # e.g. qwen2.5:14b
+OLLAMA_KEY="${OLLAMA_KEY:-}"        # only if a proxy in front of Ollama checks a Bearer token
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$APP_DIR"
 
@@ -37,25 +39,20 @@ if [ ! -f .env ]; then
   sed -i "s|^APP_ADMIN_PASSWORD=.*|APP_ADMIN_PASSWORD=$PASS|" .env
   sed -i "s|^APP_SECRET_KEY=.*|APP_SECRET_KEY=$(openssl rand -hex 32)|" .env
   echo "    dashboard user: admin   password: $PASS   (stored in $APP_DIR/.env)"
-  if [ -n "$OLLAMA_MODEL" ]; then
-    sed -i "s|^APP_LLM_PROVIDER=.*|APP_LLM_PROVIDER=openai|; s|^APP_LLM_BASE_URL=.*|APP_LLM_BASE_URL=http://ollama:11434/v1|; s|^APP_LLM_MODEL=.*|APP_LLM_MODEL=$OLLAMA_MODEL|" .env
-  fi
 fi
+[ -n "$OLLAMA_URL" ] && sed -i "s|^APP_LLM_BASE_URL=.*|APP_LLM_BASE_URL=$OLLAMA_URL|" .env
+[ -n "$OLLAMA_MODEL" ] && sed -i "s|^APP_LLM_MODEL=.*|APP_LLM_MODEL=$OLLAMA_MODEL|" .env
+[ -n "$OLLAMA_KEY" ] && sed -i "s|^APP_LLM_API_KEY=.*|APP_LLM_API_KEY=$OLLAMA_KEY|" .env
 
 mkdir -p data
 echo "==> building and starting"
-PROFILE=""
-[ -n "$OLLAMA_MODEL" ] && PROFILE="--profile ollama"
-$DC $PROFILE up -d --build
+$DC up -d --build
 
-if [ -n "$OLLAMA_MODEL" ]; then
-  echo "==> downloading model $OLLAMA_MODEL (several GB, takes a while)"
-  $DC exec -T ollama ollama pull "$OLLAMA_MODEL"
-  echo "==> quick model test"
-  $DC exec -T ollama ollama run "$OLLAMA_MODEL" "در یک جمله سلام کن" || true
-fi
+echo "==> testing the connection to Ollama"
+sleep 3
+$DC exec -T nexa python -m app.cli llm-test || echo "!! AI connection failed: check APP_LLM_* in .env (see README)"
 
 IP="$(curl -s --max-time 5 https://api.ipify.org || hostname -I | awk '{print $1}')"
 echo
 echo "Done. Dashboard: http://$IP:${HOST_PORT:-8020}"
-echo "Restart later with:  cd $APP_DIR && $DC $PROFILE up -d"
+echo "After editing .env:  cd $APP_DIR && $DC up -d"

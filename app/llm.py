@@ -45,6 +45,40 @@ class OpenAICompatLLM:
         return r.json()["choices"][0]["message"]["content"]
 
 
+class OllamaLLM:
+    """Ollama native API on your own server (optionally behind a reverse proxy that checks a Bearer token)."""
+
+    def __init__(self, base_url: str, api_key: str, model: str, timeout: float) -> None:
+        self.base_url = base_url.rstrip("/").removesuffix("/v1").removesuffix("/api")
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
+
+    def complete(self, system: str, user: str, *, json_mode: bool = False) -> str:
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "stream": False,
+            "options": {"temperature": 0.8},
+        }
+        if json_mode:
+            body["format"] = "json"
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        r = httpx.post(f"{self.base_url}/api/chat", json=body, headers=headers, timeout=self.timeout)
+        if r.status_code >= 400:
+            raise RuntimeError(f"Ollama HTTP {r.status_code}: {r.text[:300]}")
+        return r.json()["message"]["content"]
+
+
+def ollama_models(base_url: str, api_key: str = "", timeout: float = 15) -> list[str]:
+    """Models installed on an Ollama server (connection check)."""
+    base = base_url.rstrip("/").removesuffix("/v1").removesuffix("/api")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    r = httpx.get(f"{base}/api/tags", headers=headers, timeout=timeout)
+    r.raise_for_status()
+    return [x["name"] for x in r.json().get("models", [])]
+
+
 class AnthropicLLM:
     """Official Anthropic SDK. Streaming so long articles never hit HTTP timeouts."""
 
@@ -96,6 +130,8 @@ def get_llm() -> LLM:
     p = settings.llm_provider.lower()
     if p == "fake":
         return FakeLLM()
+    if p == "ollama":
+        return OllamaLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model, settings.llm_timeout_sec)
     if p == "anthropic":
         return AnthropicLLM(settings.anthropic_api_key, settings.anthropic_model, settings.llm_timeout_sec)
     return OpenAICompatLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model, settings.llm_timeout_sec)
