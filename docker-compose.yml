@@ -1,6 +1,9 @@
 services:
   nexa:
-    build: .
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     container_name: nexa-backlink
     restart: unless-stopped
     ports:
@@ -10,6 +13,18 @@ services:
       APP_DATA_DIR: /data
     volumes:
       - ./data:/data
-    # Reach Ollama on the host at http://host.docker.internal:11434/v1
+    # For an Ollama installed directly on the host: APP_LLM_BASE_URL=http://host.docker.internal:11434/v1
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # Local LLM. Started only with:  docker compose --profile ollama up -d
+  # Then in .env:  APP_LLM_BASE_URL=http://ollama:11434/v1
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nexa-ollama
+    restart: unless-stopped
+    profiles: ["ollama"]
+    volumes:
+      - ./ollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h

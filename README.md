@@ -45,23 +45,58 @@
 هم بابت link scheme به سایت پنالتی می‌دهد. برای پلتفرمی که اینجا نیست، یک کلاس کوچک در
 `app/publishers/` اضافه کن (README ریپوی backlink را ببین) یا از Webhook و n8n استفاده کن.
 
-## نصب
+## نصب روی سرور خام (آروان یا هر Ubuntu 22.04/24.04)
 
 ```bash
-git clone https://github.com/aminjn/nexacomercial && cd nexacomercial
-cp .env.example .env          # رمز داشبورد، APP_SECRET_KEY، مدل زبانی
-docker compose up -d --build
+ssh ubuntu@<IP-سرور>
+sudo apt-get update && sudo apt-get install -y git
+git clone -b claude/cool-gates-uz854n https://github.com/aminjn/nexacomercial && cd nexacomercial
+sudo bash deploy/install.sh
 ```
-داشبورد: `http://<ip>:8020`
+اسکریپت این کارها را انجام می‌دهد:
+- Docker را از مخزن Ubuntu نصب می‌کند، چون سایت Docker آی‌پی ایران را بسته است.
+- میرور رجیستری آروان را تنظیم می‌کند.
+- فایل `.env` را با رمز داشبورد و کلید رمزنگاری تصادفی می‌سازد.
+- برنامه و **Ollama** را بالا می‌آورد و مدل `qwen2.5:7b` را دانلود می‌کند.
 
-> ⚠️ `APP_SECRET_KEY` را یک رشته‌ی طولانی تصادفی بگذار و **گمش نکن**. بدون آن اطلاعات اکانت‌ها
-> قابل بازخوانی نیست. اگر خالی بماند، یک کلید در `data/secret.key` ساخته می‌شود؛ از پوشه‌ی `data/` بکاپ بگیر.
+آخر کار آدرس داشبورد و رمز را چاپ می‌کند. رمز در فایل `.env` هم ذخیره می‌شود.
 
-### مدل زبانی
-- **Ollama روی همان سرور** (پیش‌فرض): `ollama pull qwen2.5:14b` و در `.env` این‌ها:
-  `APP_LLM_PROVIDER=openai`، `APP_LLM_BASE_URL=http://host.docker.internal:11434/v1`، `APP_LLM_MODEL=qwen2.5:14b`
-- **Claude**: `APP_LLM_PROVIDER=anthropic` و `APP_ANTHROPIC_API_KEY=...`
-- هر سرویس OpenAI-compatible دیگر (OpenRouter، vLLM و ...) با همان سه متغیر `APP_LLM_*` کار می‌کند.
+| متغیر اسکریپت | پیش‌فرض | توضیح |
+|---|---|---|
+| `OLLAMA_MODEL` | `qwen2.5:7b` | مدلی که دانلود می‌شود. `OLLAMA_MODEL= ` (خالی) یعنی Ollama نصب نشود و از API بیرونی استفاده شود |
+| `REGISTRY_MIRROR` | `https://docker.arvancloud.ir` | میرور Docker Hub |
+| `PIP_INDEX_URL` | pypi.org | اگر PyPI کند یا بسته بود، یک میرور بده |
+
+مثال: `sudo OLLAMA_MODEL=qwen2.5:14b bash deploy/install.sh`
+
+### سرور مناسب برای Ollama (بدون GPU، روی CPU)
+| مدل | رم لازم | پیشنهاد سرور | کیفیت فارسی |
+|---|---|---|---|
+| `qwen2.5:3b` | ~۴ گیگ | ۴ هسته / ۸ گیگ | قابل قبول برای پست کوتاه |
+| `qwen2.5:7b` (پیش‌فرض) | ~۸ گیگ | ۸ هسته / ۱۶ گیگ | خوب |
+| `qwen2.5:14b` | ~۱۶ گیگ | ۸–۱۶ هسته / ۳۲ گیگ | بهتر، ولی کندتر |
+
+روی CPU نوشتن هر مقاله چند دقیقه طول می‌کشد. چون انتشارها با فاصله‌ی چندساعته‌اند، این مشکلی
+ایجاد نمی‌کند. حداقل ۴۰ گیگ دیسک بگیر. مدل را بعداً هم می‌توانی عوض کنی:
+```bash
+docker compose exec ollama ollama pull gemma3:12b     # دانلود مدل جدید
+nano .env                                             # APP_LLM_MODEL=gemma3:12b
+docker compose --profile ollama up -d
+```
+
+### بعد از نصب
+- پورت `8020` را در فایروال آروان باز کن. بهتر است فقط برای آی‌پی خودت باز باشد.
+- پورت Ollama (11434) بیرون باز نیست و فقط خود برنامه به آن دسترسی دارد.
+- بکاپ: پوشه‌ی `data/` و فایل `.env`.
+- آپدیت: `git pull && docker compose --profile ollama up -d --build`
+- لاگ: `docker compose logs -f nexa`
+
+### به‌جای Ollama: API بیرونی
+هر سرویس OpenAI-compatible (OpenRouter، سرویس‌های واسط ایرانی و ...) با سه متغیر کار می‌کند:
+`APP_LLM_BASE_URL`، `APP_LLM_API_KEY` و `APP_LLM_MODEL`. برای Claude هم از
+`APP_LLM_PROVIDER=anthropic` استفاده کن.
+
+> ⚠️ `APP_SECRET_KEY` در `.env` اطلاعات اکانت‌ها را رمز می‌کند. اگر گم شود، اکانت‌ها قابل بازخوانی نیستند.
 
 ## گردش کار
 
