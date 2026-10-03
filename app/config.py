@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     admin_user: str = "admin"
     admin_password: str = ""
 
+    # Public address of this dashboard (e.g. https://cm.nojanteb.ir). Uploaded images get links on it
+    # so Instagram / Pinterest can fetch them. Empty = taken from the request.
+    public_url: str = ""
+    upload_max_mb: int = 10
+
     # Key used to encrypt account credentials at rest. Any string works; if empty a random
     # key is generated once and stored in <data_dir>/secret.key — back that file up.
     secret_key: str = ""
@@ -49,6 +54,12 @@ class Settings(BaseSettings):
     @property
     def data_path(self) -> Path:
         p = Path(self.data_dir).resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def uploads_path(self) -> Path:
+        p = self.data_path / "uploads"
         p.mkdir(parents=True, exist_ok=True)
         return p
 

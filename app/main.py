@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
@@ -46,6 +47,8 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Nexa Backlink", lifespan=lifespan)
+# Uploaded images are public on purpose: Instagram / Pinterest servers download them by URL.
+app.mount("/media", StaticFiles(directory=str(settings.uploads_path)), name="media")
 protected = [Depends(auth)]
 
 
@@ -139,8 +142,7 @@ def _site_from_form(f: dict[str, str], site: m.Site | None = None) -> m.Site:
     pages = [{"url": u} for u in f.get("pages", "").split()]
     data = dict(name=f["name"].strip(), url=f["url"].strip(), language=f.get("language", "fa").strip() or "fa",
                 niche=f.get("niche", ""), description=f.get("description", ""), keywords=_list(f.get("keywords", "")),
-                anchors=_list(f.get("anchors", "")), pages=pages, image_url=f.get("image_url", "").strip(),
-                style=f.get("style", ""), enabled=bool(f.get("enabled")))
+                anchors=_list(f.get("anchors", "")), pages=pages, style=f.get("style", ""), enabled=bool(f.get("enabled")))
     if site is None:
         return m.Site(**data)
     for k, v in data.items():
@@ -148,12 +150,53 @@ def _site_from_form(f: dict[str, str], site: m.Site | None = None) -> m.Site:
     return site
 
 
+IMAGE_TYPES = {b"\xff\xd8\xff": ".jpg", b"\x89PNG": ".png", b"GIF8": ".gif", b"RIFF": ".webp"}
+
+
+def public_base(request: Request) -> str:
+    if settings.public_url:
+        return settings.public_url.rstrip("/")
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+    return f"{proto}://{request.headers.get('host', request.url.netloc)}"
+
+
+async def save_image(upload: Any, request: Request) -> str:
+    """Store an uploaded image under data/uploads and return its public URL."""
+    data = await upload.read()
+    if len(data) > settings.upload_max_mb * 1024 * 1024:
+        raise ValueError(f"حجم تصویر بیشتر از {settings.upload_max_mb} مگابایت است")
+    ext = next((e for sig, e in IMAGE_TYPES.items() if data.startswith(sig)), None)
+    if ext is None or (ext == ".webp" and data[8:12] != b"WEBP"):
+        raise ValueError("فقط تصویر JPG، PNG، WEBP یا GIF")
+    name = secrets.token_hex(12) + ext
+    (settings.uploads_path / name).write_bytes(data)
+    return f"{public_base(request)}/media/{name}"
+
+
+def delete_image(url: str) -> None:
+    if "/media/" in url:
+        f = settings.uploads_path / Path(url.rsplit("/media/", 1)[1]).name
+        f.unlink(missing_ok=True)
+
+
 @app.post("/sites", dependencies=protected)
 async def site_save(request: Request):
-    f = dict(await request.form())
+    form = await request.form()
+    f = {k: v for k, v in form.items() if isinstance(v, str)}
+    upload = form.get("image_file")
+    new_image = ""
+    if upload is not None and not isinstance(upload, str) and upload.filename:
+        try:
+            new_image = await save_image(upload, request)
+        except ValueError as e:
+            return back("/sites", str(e))
     with m.session() as s:
         site = s.get(m.Site, int(f["id"])) if f.get("id") else None
-        s.add(_site_from_form(f, site))
+        site = _site_from_form(f, site)
+        if new_image or f.get("remove_image"):
+            delete_image(site.image_url or "")
+            site.image_url = new_image
+        s.add(site)
         s.commit()
     return back("/sites", "ذخیره شد")
 

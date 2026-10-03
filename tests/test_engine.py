@@ -194,3 +194,31 @@ def test_dashboard_and_forms():
         assert client.get("/api/accounts").json()[0]["creds"]["bot_token"] == "•••"
         r = client.post("/api/accounts/import?tag=z", content="label,kind,handle,app_password\nb,bluesky,me,pw\n")
         assert r.json() == {"imported": 1, "errors": []}
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
+def test_site_image_upload_replace_and_remove():
+    from fastapi.testclient import TestClient
+
+    from app.config import settings
+    from app.main import app
+    with TestClient(app) as client:
+        form = {"name": "S", "url": "https://s.com", "enabled": "1"}
+        r = client.post("/sites", data=form, files={"image_file": ("a.png", PNG, "image/png")})
+        assert "ذخیره شد" in r.text
+        url = client.get("/api/sites").json()[0]["image_url"]
+        assert url.startswith("http://testserver/media/") and url.endswith(".png")
+        name = url.rsplit("/", 1)[1]
+        assert client.get(f"/media/{name}").content == PNG  # publicly served
+        # edit without a new file keeps the image
+        client.post("/sites", data={**form, "id": "1"}, files={"image_file": ("", b"", "application/octet-stream")})
+        assert client.get("/api/sites").json()[0]["image_url"] == url
+        # non-image is rejected
+        r = client.post("/sites", data={**form, "id": "1"}, files={"image_file": ("x.png", b"not an image", "image/png")})
+        assert "فقط تصویر" in r.text
+        # remove deletes the file
+        client.post("/sites", data={**form, "id": "1", "remove_image": "1"})
+        assert client.get("/api/sites").json()[0]["image_url"] == ""
+        assert not (settings.uploads_path / name).exists()

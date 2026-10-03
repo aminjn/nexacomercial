@@ -2,24 +2,30 @@
 {% block body %}
 <div class="card"><h2>سایت‌ها</h2>
 <table>
-  <tr><th>نام</th><th>آدرس</th><th>زبان</th><th>کلمات کلیدی</th><th>صفحات عمقی</th><th>انتشار موفق</th><th></th></tr>
+  <tr><th></th><th>نام</th><th>آدرس</th><th>زبان</th><th>کلمات کلیدی</th><th>صفحات عمقی</th><th>انتشار موفق</th><th></th></tr>
   {% for s in sites %}
-  <tr><td>{{ s.name }} {% if not s.enabled %}<span class="muted">(غیرفعال)</span>{% endif %}</td><td class="ltr"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a></td>
+  <tr><td>{% if s.image_url %}<img src="{{ s.image_url }}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:6px">{% endif %}</td>
+    <td>{{ s.name }} {% if not s.enabled %}<span class="muted">(غیرفعال)</span>{% endif %}</td><td class="ltr"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a></td>
     <td>{{ s.language }}</td><td>{{ (s.keywords or [])|join('، ') }}</td><td>{{ (s.pages or [])|length }}</td><td>{{ counts[s.id] }}</td>
     <td style="white-space:nowrap"><a class="btn" href="/sites?edit={{ s.id }}">ویرایش</a>
       <form class="inline" method="post" action="/sites/{{ s.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="danger">حذف</button></form></td></tr>
-  {% else %}<tr><td colspan="7" class="muted">هنوز سایتی اضافه نشده.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="8" class="muted">هنوز سایتی اضافه نشده.</td></tr>{% endfor %}
 </table></div>
 
 <div class="card"><h2>{{ 'ویرایش «' ~ current.name ~ '»' if current else 'افزودن سایت' }}</h2>
-<form method="post" action="/sites">
+<form method="post" action="/sites" enctype="multipart/form-data">
   {% if current %}<input type="hidden" name="id" value="{{ current.id }}">{% endif %}
   <div class="grid">
     <label><span>نام برند *</span><input name="name" required value="{{ current.name if current }}"></label>
     <label><span>آدرس سایت *</span><input name="url" class="ltr" required placeholder="https://example.com" value="{{ current.url if current }}"></label>
     <label><span>زبان محتوا</span><input name="language" value="{{ current.language if current else 'fa' }}" placeholder="fa / en / ar / tr"></label>
     <label><span>حوزه‌ی کاری</span><input name="niche" value="{{ current.niche if current }}"></label>
-    <label><span>تصویر پیش‌فرض (برای اینستاگرام/پینترست)</span><input name="image_url" class="ltr" value="{{ current.image_url if current }}"></label>
+    <label><span>تصویر (برای اینستاگرام/پینترست) — JPG، PNG، WEBP</span>
+      <input type="file" name="image_file" id="image_file" accept="image/jpeg,image/png,image/webp,image/gif">
+      <img id="image_preview" src="{{ current.image_url if current and current.image_url }}" alt=""
+           style="max-width:160px;max-height:120px;margin-top:6px;border-radius:6px;{{ '' if current and current.image_url else 'display:none' }}">
+      {% if current and current.image_url %}<span class="check"><input type="checkbox" name="remove_image" value="1"> حذف تصویر</span>{% endif %}
+    </label>
   </div>
   <label><span>توضیح سایت (هوش مصنوعی از این برای نوشتن استفاده می‌کند)</span><textarea name="description">{{ current.description if current }}</textarea></label>
   <div class="grid">
@@ -40,4 +46,10 @@
   <input type="file" name="file" accept=".csv,.json" style="margin:8px 0">
   <button>ورود</button>
 </form></div>
+<script>
+document.getElementById('image_file').addEventListener('change', e => {
+  const f = e.target.files[0], img = document.getElementById('image_preview');
+  if (f) { img.src = URL.createObjectURL(f); img.style.display = ''; }
+});
+</script>
 {% endblock %}
