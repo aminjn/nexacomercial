@@ -126,15 +126,31 @@ class FakeLLM:
         )
 
 
-def get_llm() -> LLM:
+def llm_check(timeout: float = 90) -> tuple[bool, str]:
+    """Quick connectivity + generation test for the dashboard / CLI."""
+    try:
+        if settings.llm_provider.lower() == "ollama":
+            models = ollama_models(settings.llm_base_url, settings.llm_api_key, timeout=15)
+            if settings.llm_model not in models and f"{settings.llm_model}:latest" not in models:
+                return False, (f"به سرور وصل شد ولی مدل «{settings.llm_model}» روی آن نیست. مدل‌های موجود: "
+                               f"{', '.join(models) or 'هیچ'} — روی سرور Ollama بزن: ollama pull {settings.llm_model}")
+        reply = get_llm(timeout).complete("Answer in one short sentence.", "سلام، یک جمله درباره‌ی خودت بگو.")
+        return True, f"وصل است ✓ جواب مدل: {reply.strip()[:200]}"
+    except Exception as e:  # noqa: BLE001
+        from .engine import explain_error
+        return False, explain_error("ai", "", e)
+
+
+def get_llm(timeout: float | None = None) -> LLM:
     p = settings.llm_provider.lower()
     if p == "fake":
         return FakeLLM()
+    t = timeout or settings.llm_timeout_sec
     if p == "ollama":
-        return OllamaLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model, settings.llm_timeout_sec)
+        return OllamaLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model, t)
     if p == "anthropic":
-        return AnthropicLLM(settings.anthropic_api_key, settings.anthropic_model, settings.llm_timeout_sec)
-    return OpenAICompatLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model, settings.llm_timeout_sec)
+        return AnthropicLLM(settings.anthropic_api_key, settings.anthropic_model, t)
+    return OpenAICompatLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model, t)
 
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)

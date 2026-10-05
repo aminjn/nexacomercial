@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="card"><h2>اکانت‌ها ({{ rows|length }})</h2>
+{% if rows|selectattr('a.status', 'equalto', 'paused')|list %}<form method="post" action="/accounts/resume-all" style="margin-bottom:10px"><button class="sec">فعال‌کردن دوباره‌ی همه‌ی اکانت‌های متوقف</button></form>{% endif %}
 <form method="get" class="grid" style="max-width:600px;margin-bottom:10px">
   <select name="kind"><option value="">همه‌ی پلتفرم‌ها</option>{% for k in kinds %}<option {{ 'selected' if f_kind == k }}>{{ k }}</option>{% endfor %}</select>
   <select name="tag"><option value="">همه‌ی گروه‌ها</option>{% for t in tags %}<option {{ 'selected' if f_tag == t }}>{{ t }}</option>{% endfor %}</select>

@@ -121,6 +121,23 @@ def tick_now(dry: bool = False):
     return back("/", f"{len(recs)} مورد اجرا شد")
 
 
+@app.post("/llm-test", dependencies=protected)
+def llm_test():
+    from .llm import llm_check
+    ok, msg = llm_check()
+    return back("/", ("هوش مصنوعی: " if ok else "هوش مصنوعی وصل نیست: ") + msg)
+
+
+@app.post("/accounts/resume-all", dependencies=protected)
+def accounts_resume_all():
+    with m.session() as s:
+        for a in s.exec(select(m.Account).where(m.Account.status == "paused")).all():
+            a.status, a.fail_count, a.last_error = "ok", 0, ""
+            s.add(a)
+        s.commit()
+    return back("/accounts", "همه‌ی اکانت‌های متوقف دوباره فعال شدند")
+
+
 @app.post("/verify", dependencies=protected)
 def verify():
     return back("/", f"{engine.verify_links(max_age_hours=0)} لینک بررسی شد")

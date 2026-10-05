@@ -98,9 +98,11 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
     extra = campaign.extra_instructions if campaign else ""
     rec = m.Publication(campaign_id=campaign.id if campaign else None, site_id=site.id, account_id=account.id,
                         account_kind=account.kind, account_label=account.label, category=account.category)
+    stage = "setup"  # setup → ai (writing) → publish (platform API); only publish errors count against the account
     try:
         creds = account.creds
         pub = make(account.kind, creds)
+        stage = "ai"
         llm = get_llm()
         if pub.category == "article":
             with m.session() as s:
@@ -108,31 +110,36 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             art = generate_article(llm, site, recent, extra)
             rec.title, rec.link_url, rec.anchor = art.title, art.link_url, art.anchor
             rec.body_preview = art.body_markdown[:600]
+            stage = "publish"
             res = None if dry else pub.publish_article(art)
         else:
             post = generate_social(llm, site, account.kind, max_chars=min(pub.max_chars or 240, 240), extra=extra)
-            if pub.needs_image and not (post.image_url or creds.get("image_url")):
-                raise PublishError(f"{account.kind} needs an image (set the site's image_url)")
             rec.title, rec.link_url = post.text[:120], post.link_url
             rec.body_preview = post.render()[:600]
+            if pub.needs_image and not (post.image_url or creds.get("image_url")):
+                stage = "setup"
+                raise PublishError(f"{account.kind} بدون تصویر پست نمی‌گذارد؛ در صفحه‌ی «سایت‌ها» برای این سایت تصویر انتخاب کن")
+            stage = "publish"
             res = None if dry else pub.publish_social(post)
         if dry:
             rec.status = "dry_run"
         else:
             rec.url, rec.external_id = res.url, res.external_id
     except Exception as e:  # noqa: BLE001 — record every failure, never crash the scheduler
-        rec.status, rec.error = "error", f"{type(e).__name__}: {e}"[:1000]
-        log.exception("[site %s] publish via account %s failed", site.id, account.id)
+        rec.status, rec.error = "error", explain_error(stage, account.kind, e)[:1000]
+        log.exception("[site %s] %s stage failed for account %s", site.id, stage, account.id)
 
     with m.session() as s:
         acc = s.get(m.Account, account.id)
-        if rec.status == "error":
+        if rec.status == "error" and stage == "publish":
             acc.fail_count += 1
             acc.last_error = rec.error
             if acc.fail_count >= settings.account_max_failures:
                 acc.status = "paused"
                 s.add(m.RunLog(level="warning",
                                message=f"account #{acc.id} {acc.label} auto-paused after {acc.fail_count} failures"))
+        elif rec.status == "error":
+            acc.last_error = rec.error  # AI / setup problem: not the account's fault, don't pause it
         elif rec.status == "ok":
             acc.fail_count, acc.last_error = 0, ""
             acc.last_used_at = m.utcnow()
@@ -145,6 +152,37 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
         s.commit()
         s.refresh(rec)
     return rec
+
+
+STAGE_NAMES = {"setup": "تنظیمات", "ai": "هوش مصنوعی (نوشتن محتوا)", "publish": "انتشار در"}
+
+
+def explain_error(stage: str, kind: str, e: Exception) -> str:
+    """Human-readable (Persian) error: which stage failed, why, and what to do."""
+    raw = f"{type(e).__name__}: {e}"
+    low = raw.lower()
+    where = f"{STAGE_NAMES['publish']} {kind}" if stage == "publish" else STAGE_NAMES.get(stage, stage)
+    if "name resolution" in low or "name or service not known" in low or "nodename nor servname" in low:
+        why = "آدرس سرور پیدا نشد (DNS)."
+    elif "connection refused" in low:
+        why = "سرور جواب نداد (پورت بسته است یا سرویس خاموش است)."
+    elif "timed out" in low or "timeout" in low:
+        why = "زمان انتظار تمام شد؛ سرور خیلی کند است یا اتصال برقرار نمی‌شود."
+    elif "http 401" in low or "http 403" in low or " 401" in low or " 403" in low:
+        why = "توکن/کلید نامعتبر یا منقضی است، یا دسترسی لازم را ندارد."
+    elif "connecterror" in low or "connection" in low:
+        why = "اتصال برقرار نشد."
+    else:
+        why = ""
+    if stage == "ai":
+        todo = "تنظیمات APP_LLM_* در فایل .env را چک کن و در داشبورد «تست هوش مصنوعی» را بزن."
+    elif stage == "publish" and ("connect" in low or "timeout" in low or "timed out" in low or "name resolution" in low):
+        todo = "اگر این پلتفرم در ایران فیلتر است، APP_PUBLISH_PROXY را در .env تنظیم کن."
+    elif stage == "publish" and why.startswith("توکن"):
+        todo = "در صفحه‌ی اکانت‌ها اطلاعات این اکانت را ویرایش کن."
+    else:
+        todo = ""
+    return " ".join(x for x in (f"[{where}]", why, todo, f"— {raw}") if x)
 
 
 def run_campaign(campaign_id: int, *, force: bool = False, dry_run: bool | None = None) -> m.Publication | None:

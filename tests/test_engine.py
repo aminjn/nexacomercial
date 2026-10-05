@@ -238,3 +238,37 @@ def test_account_edit_keeps_secrets():
             a = s.get(m.Account, 1)
         assert (a.label, a.creds, a.min_hours_between) == ("t2", {"bot_token": "1:x", "chat_id": "@d"}, 6.0)
         assert "شناسه‌ی اکانت" not in client.get("/accounts").text
+
+
+def test_ai_failure_does_not_pause_account(monkeypatch):
+    import app.engine as eng
+
+    class Broken:
+        def complete(self, *a, **k):
+            raise httpx.ConnectError("[Errno -3] Temporary failure in name resolution")
+    monkeypatch.setattr(eng, "get_llm", lambda: Broken())
+    importer.import_accounts("label,kind,min_hours_between,bot_token,chat_id\nt,telegram,0,1:x,@c\n")
+    c = add_campaign(add_site(), content_mode="social")
+    for _ in range(4):
+        rec = engine.run_campaign(c.id, dry_run=False)
+        assert rec.status == "error" and "[هوش مصنوعی" in rec.error and "DNS" in rec.error
+    with m.session() as s:
+        acc = s.exec(m.select(m.Account)).one()
+    assert acc.usable and acc.fail_count == 0
+
+
+def test_publish_error_is_explained(monkeypatch):
+    monkeypatch.setattr(Publisher, "http", _mock(lambda req: httpx.Response(401, text="bad token")))
+    importer.import_accounts("label,kind,min_hours_between,bot_token,chat_id\nt,telegram,0,1:x,@c\n")
+    c = add_campaign(add_site(), content_mode="social")
+    rec = engine.run_campaign(c.id, dry_run=False)
+    assert "[انتشار در telegram]" in rec.error and "توکن" in rec.error
+
+
+def test_llm_test_button():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with TestClient(app) as client:
+        r = client.post("/llm-test")
+        assert "هوش مصنوعی: وصل است" in r.text  # fake provider in tests
