@@ -19,7 +19,7 @@ from . import engine, importer, scheduler
 from . import models as m
 from .config import settings
 from .publishers import REGISTRY
-from .publishers.fields import KIND_FIELDS, is_secret, masked, missing_fields
+from .publishers.fields import KIND_FIELDS, KIND_GUIDES, field_names, is_secret, masked, missing_fields
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -236,7 +236,8 @@ def accounts_page(request: Request, tag: str = "", kind: str = "", edit: int = 0
         tags = sorted({a.tag for a in s.exec(select(m.Account)).all() if a.tag})
         sites = s.exec(select(m.Site)).all()
     rows = [{"a": a, "creds": masked(a.creds)} for a in accounts]
-    kinds = {k: {"category": REGISTRY[k].category, "fields": KIND_FIELDS.get(k, [])} for k in sorted(REGISTRY)}
+    kinds = {k: {"category": REGISTRY[k].category, "fields": KIND_FIELDS.get(k, []), "guide": KIND_GUIDES.get(k, {})}
+             for k in sorted(REGISTRY)}
     current = _get(m.Account, edit) if edit else None
     # Prefill non-secret values only; secret fields stay empty (= keep the stored value).
     current_creds = {k: v for k, v in current.creds.items() if not is_secret(k)} if current else {}
@@ -253,7 +254,7 @@ async def account_save(request: Request):
     with m.session() as s:
         acc = s.get(m.Account, int(f["id"])) if f.get("id") else m.Account(label="", kind=kind)
         creds = acc.creds if acc.id else {}
-        for name, _, _ in KIND_FIELDS.get(kind, []):
+        for name in field_names(kind):
             v = str(f.get(f"cred_{name}", "")).strip()
             if v:
                 creds[name] = v  # empty field on edit = keep the stored secret
@@ -431,5 +432,6 @@ async def api_sites_import(request: Request):
 @app.get("/api/kinds", dependencies=protected)
 def api_kinds():
     return {k: {"category": REGISTRY[k].category,
-                "fields": [{"name": n, "required": r, "hint": h} for n, r, h in KIND_FIELDS.get(k, [])]}
+                "fields": [{"name": n, "required": r, "label": lb, "help": h} for n, r, lb, h in KIND_FIELDS.get(k, [])],
+                "guide": KIND_GUIDES.get(k, {})}
             for k in sorted(REGISTRY)}

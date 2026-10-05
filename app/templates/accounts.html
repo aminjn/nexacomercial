@@ -26,47 +26,86 @@
 
 {% set c = current %}
 <div class="card" id="form"><h2>{{ 'ویرایش «' ~ c.label ~ '»' if c else 'افزودن اکانت' }}</h2>
-<p class="muted">همه‌ی پلتفرم‌ها از طریق API رسمی خودشان کار می‌کنند؛ برای هر اکانت توکن/کلید API همان اکانت را وارد کن.{% if c %} فیلدهای رمز/توکن را خالی بگذاری، مقدار قبلی حفظ می‌شود.{% endif %}</p>
+<p class="muted">اول پلتفرم را انتخاب کن؛ پایینش آموزش قدم‌به‌قدم گرفتن اطلاعات همان پلتفرم می‌آید و زیر هر کادر نوشته شده مقدارش را از کجا بیاوری.
+همه‌چیز از طریق API رسمی خود پلتفرم است.{% if c %} کادرهای رمز/توکن را خالی بگذاری، مقدار قبلی حفظ می‌شود.{% endif %}</p>
 <form method="post" action="/accounts" autocomplete="off">
   {% if c %}<input type="hidden" name="id" value="{{ c.id }}">{% endif %}
   <div class="grid">
-    <label><span>پلتفرم *</span><select name="kind" id="kind" required autocomplete="off">{% for k, v in kinds.items() %}<option value="{{ k }}" {{ 'selected' if c and c.kind == k }}>{{ k }} — {{ 'مقاله/بک‌لینک' if v.category == 'article' else 'سوشیال' }}</option>{% endfor %}</select></label>
-    <label><span>نام اکانت</span><input name="label" value="{{ c.label if c }}"></label>
-    <label><span>گروه (برای انتخاب در کمپین)</span><input name="tag" list="tags" value="{{ c.tag if c }}"><datalist id="tags">{% for t in tags %}<option>{{ t }}</option>{% endfor %}</datalist></label>
-    <label><span>حداقل فاصله بین دو پست (ساعت)</span><input name="min_hours_between" type="number" step="0.5" value="{{ c.min_hours_between if c else 12 }}"></label>
-    <label><span>سقف پست روزانه این اکانت</span><input name="daily_limit" type="number" value="{{ c.daily_limit if c else 3 }}"></label>
+    <label><span>پلتفرم *</span><select name="kind" id="kind" required autocomplete="off">{% for k, v in kinds.items() %}<option value="{{ k }}" {{ 'selected' if c and c.kind == k }}>{{ k }} — {{ 'مقاله/بک‌لینک' if v.category == 'article' else 'سوشیال' }}</option>{% endfor %}</select>
+      <small class="help">«مقاله/بک‌لینک» = یک مقاله‌ی کامل با لینک سایتت منتشر می‌کند. «سوشیال» = پست کوتاه با لینک.</small></label>
+    <label><span>نام اکانت</span><input name="label" value="{{ c.label if c }}" placeholder="مثلاً تلگرام ملک‌جت">
+      <small class="help">فقط برای خودت، تا در لیست و گزارش‌ها اکانت‌ها را از هم تشخیص بدهی.</small></label>
+    <label><span>گروه</span><input name="tag" list="tags" value="{{ c.tag if c }}" placeholder="مثلاً melkjet"><datalist id="tags">{% for t in tags %}<option>{{ t }}</option>{% endfor %}</datalist>
+      <small class="help">اختیاری. اکانت‌های یک سایت را هم‌گروه کن تا در کمپین با یک انتخاب همه‌شان را برداری.</small></label>
+    <label><span>حداقل فاصله بین دو پست (ساعت)</span><input name="min_hours_between" type="number" step="0.5" min="0" value="{{ c.min_hours_between if c else 12 }}">
+      <small class="help">این اکانت زودتر از این فاصله دوباره پست نمی‌گذارد. ۶ تا ۲۴ ساعت طبیعی است؛ کمتر = ریسک بن شدن.</small></label>
+    <label><span>سقف پست روزانه‌ی این اکانت</span><input name="daily_limit" type="number" min="1" value="{{ c.daily_limit if c else 3 }}">
+      <small class="help">مجموع پست‌های این اکانت در یک روز، در همه‌ی کمپین‌ها و سایت‌ها روی هم.</small></label>
   </div>
+  <details class="guide" id="guide" open><summary></summary><div id="guide_body"></div></details>
   <div class="grid" id="fields"></div>
-  <label><span>یادداشت</span><input name="notes" value="{{ c.notes if c }}"></label>
+  <label><span>یادداشت</span><input name="notes" value="{{ c.notes if c }}"><small class="help">اختیاری؛ مثلاً تاریخ انقضای توکن یا ایمیل اکانت.</small></label>
   <button>ذخیره</button> {% if c %}<a href="/accounts">انصراف</a>{% endif %}
 </form></div>
 
 <div class="card"><h2>ورود گروهی اکانت‌ها (CSV یا JSON)</h2>
-<p class="muted">ستون‌های <code>label, kind, tag, min_hours_between, daily_limit</code> تنظیمات اکانت‌اند و <b>بقیه‌ی ستون‌ها</b> اطلاعات ورود همان پلتفرم (مثل <code>bot_token, chat_id</code>). در یک فایل می‌توانی چند پلتفرم مختلف داشته باشی؛ ستون‌های بی‌ربط را خالی بگذار.</p>
+<p class="muted">برای وقتی که اکانت زیاد داری. ستون‌های <code>label, kind, tag, min_hours_between, daily_limit</code> تنظیمات اکانت‌اند و <b>بقیه‌ی ستون‌ها</b> اطلاعات ورود همان پلتفرم با همان اسم‌های انگلیسی کادرهای بالا (مثل <code>bot_token, chat_id</code>). در یک فایل می‌توانی چند پلتفرم مختلف داشته باشی؛ ستون‌های بی‌ربط را خالی بگذار. فایل را می‌توانی در اکسل بسازی و «CSV UTF-8» ذخیره کنی.</p>
 <form method="post" action="/accounts/import" enctype="multipart/form-data">
   <textarea name="text" class="ltr" placeholder="label,kind,tag,bot_token,chat_id,handle,app_password&#10;tg-1,telegram,shop,123:ABC,@channel1,,&#10;bsky-1,bluesky,shop,,,me.bsky.social,xxxx-xxxx-xxxx-xxxx"></textarea>
   <div class="grid" style="margin:8px 0"><input type="file" name="file" accept=".csv,.json"><input name="tag" placeholder="گروه پیش‌فرض برای ردیف‌های بدون گروه"></div>
   <button>ورود</button>
 </form></div>
 
+<style>
+.help{display:block;color:var(--muted);font-size:12px;margin-top:3px;line-height:1.7}
+.guide{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:6px 0 14px}
+.guide summary{cursor:pointer;font-weight:bold}.guide ol{margin:8px 0;padding-right:20px}.guide li{margin-bottom:4px}
+.guide .note{border-right:3px solid var(--warn);padding-right:8px;margin-top:8px}
+.guide code{display:inline-block;max-width:100%;overflow-x:auto;white-space:nowrap;vertical-align:bottom}
+</style>
 <script>
 const KINDS = {{ kinds|tojson }};
 const EDITING = {{ 'true' if c else 'false' }}, ORIG_KIND = {{ (c.kind if c else '')|tojson }};
 const VALUES = {{ current_creds|tojson }};
 const kindSel = document.getElementById('kind'), box = document.getElementById('fields');
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+
+function drawGuide(k){
+  const g = KINDS[k].guide || {}, body = document.getElementById('guide_body');
+  document.querySelector('#guide summary').textContent = `آموزش گرفتن اطلاعات ${k}` + (g.summary ? ` — ${g.summary}` : '');
+  body.innerHTML = '';
+  if (g.steps && g.steps.length){
+    const ol = el('ol');
+    for (const st of g.steps){
+      const li = el('li');
+      if (/^(curl|https?:\/\/)/.test(st)) li.appendChild(el('code', 'ltr', st)); else li.textContent = st;
+      ol.appendChild(li);
+    }
+    body.appendChild(ol);
+  }
+  if (g.links && g.links.length){
+    const p = el('p'); p.appendChild(document.createTextNode('لینک‌ها: '));
+    g.links.forEach(([t, u], i) => { const a = el('a', '', t); a.href = u; a.target = '_blank'; a.rel = 'noopener'; p.appendChild(a); if (i < g.links.length - 1) p.appendChild(document.createTextNode(' · ')); });
+    body.appendChild(p);
+  }
+  if (g.notes) body.appendChild(el('p', 'note', g.notes));
+}
+
 function draw(){
+  const k = kindSel.value, same = k === ORIG_KIND;
+  drawGuide(k);
   box.innerHTML = '';
-  const same = kindSel.value === ORIG_KIND;
-  for (const [name, req, hint] of KINDS[kindSel.value].fields){
-    const l = document.createElement('label'), span = document.createElement('span'), inp = document.createElement('input');
+  for (const [name, req, label, help] of KINDS[k].fields){
+    const l = el('label'), span = el('span'), inp = el('input');
     const secret = /token|secret|password|key/.test(name);
-    span.innerHTML = `${name}${req ? ' *' : ''} <i></i>`;
-    span.querySelector('i').textContent = hint || '';
+    span.textContent = `${label}${req ? ' *' : ' (اختیاری)'} `;
+    span.appendChild(el('code', 'ltr', name));
     inp.className = 'ltr'; inp.name = 'cred_' + name; inp.autocomplete = secret ? 'new-password' : 'off';
     inp.type = secret ? 'password' : 'text';
     if (same && VALUES[name] !== undefined) inp.value = VALUES[name];
     if (EDITING && same && secret) inp.placeholder = 'خالی = بدون تغییر';
-    l.append(span, inp); box.appendChild(l);
+    l.append(span, inp, el('small', 'help', help));
+    box.appendChild(l);
   }
 }
 kindSel.addEventListener('change', draw);

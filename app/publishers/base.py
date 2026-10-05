@@ -44,7 +44,15 @@ class Publisher:
     def http(self, **kw: Any) -> httpx.Client:
         kw.setdefault("timeout", settings.http_timeout_sec)
         kw.setdefault("follow_redirects", True)
+        if settings.publish_proxy:
+            kw.setdefault("proxy", settings.publish_proxy)
         return httpx.Client(**kw)
+
+    @staticmethod
+    def proxies() -> dict[str, str] | None:
+        """Proxy mapping for requests-based clients (OAuth1Session)."""
+        p = settings.publish_proxy
+        return {"http": p, "https": p} if p else None
 
     @staticmethod
     def check(r: httpx.Response) -> dict[str, Any]:

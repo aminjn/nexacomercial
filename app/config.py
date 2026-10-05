@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # Generate content but don't call any publishing API. Great for a first run.
     dry_run: bool = False
 
+    # HTTP proxy for publishing requests only (e.g. http://user:pass@1.2.3.4:3128).
+    # Needed on servers inside Iran, where Telegram / X / Meta / ... are not reachable directly.
+    publish_proxy: str = ""
+
     # HTTP timeouts for publishers.
     http_timeout_sec: float = 60.0
 

@@ -52,6 +52,8 @@ class XTwitter(Publisher):
             self.opt("consumer_key", required=True), self.opt("consumer_secret", required=True),
             self.opt("access_token", required=True), self.opt("access_token_secret", required=True),
         )
+        if self.proxies():
+            s.proxies = self.proxies()
         # URLs count as 23 chars on X regardless of length.
         text = post.render(self.max_chars - 23 + len(post.link_url))
         r = s.post("https://api.twitter.com/2/tweets", json={"text": text}, timeout=60)

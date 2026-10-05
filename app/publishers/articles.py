@@ -211,6 +211,8 @@ class Tumblr(Publisher):
             self.opt("consumer_key", required=True), self.opt("consumer_secret", required=True),
             self.opt("token", required=True), self.opt("token_secret", required=True),
         )
+        if self.proxies():
+            s.proxies = self.proxies()
         r = s.post(f"https://api.tumblr.com/v2/blog/{blog}/post", data={
             "type": "text", "title": article.title, "body": article.body_html,
             "tags": ",".join(article.tags), "format": "html",
