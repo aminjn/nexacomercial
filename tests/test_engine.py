@@ -222,3 +222,19 @@ def test_site_image_upload_replace_and_remove():
         client.post("/sites", data={**form, "id": "1", "remove_image": "1"})
         assert client.get("/api/sites").json()[0]["image_url"] == ""
         assert not (settings.uploads_path / name).exists()
+
+
+def test_account_edit_keeps_secrets():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with TestClient(app) as client:
+        client.post("/accounts", data={"kind": "telegram", "label": "t", "cred_bot_token": "1:x", "cred_chat_id": "@c"})
+        page = client.get("/accounts?edit=1").text
+        assert 'value="t"' in page and '"chat_id": "@c"' in page and "1:x" not in page
+        client.post("/accounts", data={"id": "1", "kind": "telegram", "label": "t2", "cred_bot_token": "",
+                                       "cred_chat_id": "@d", "min_hours_between": "6", "daily_limit": "2"})
+        with m.session() as s:
+            a = s.get(m.Account, 1)
+        assert (a.label, a.creds, a.min_hours_between) == ("t2", {"bot_token": "1:x", "chat_id": "@d"}, 6.0)
+        assert "شناسه‌ی اکانت" not in client.get("/accounts").text

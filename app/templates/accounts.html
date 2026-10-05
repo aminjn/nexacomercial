@@ -17,26 +17,28 @@
       <form class="inline" method="post" action="/accounts/{{ a.id }}/test" onsubmit="return confirm('یک پست واقعی منتشر می‌شود. ادامه؟')">
         <select name="site_id" style="width:auto">{% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select><button class="sec">تست</button></form>
       {% if a.status == 'paused' %}<form class="inline" method="post" action="/accounts/{{ a.id }}/resume"><button class="sec">ادامه</button></form>{% endif %}
+      <a class="btn" href="/accounts?edit={{ a.id }}#form">ویرایش</a>
       <form class="inline" method="post" action="/accounts/{{ a.id }}/toggle"><button class="sec">{{ 'خاموش' if a.enabled else 'روشن' }}</button></form>
       <form class="inline" method="post" action="/accounts/{{ a.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="danger">حذف</button></form>
     </td></tr>
   {% else %}<tr><td colspan="10" class="muted">هنوز اکانتی اضافه نشده.</td></tr>{% endfor %}
 </table></div>
 
-<div class="card"><h2>افزودن / ویرایش اکانت</h2>
-<p class="muted">همه‌ی پلتفرم‌ها از طریق API رسمی خودشان کار می‌کنند؛ برای هر اکانت توکن/کلید API همان اکانت را وارد کن. در ویرایش، فیلد خالی یعنی مقدار قبلی حفظ شود.</p>
-<form method="post" action="/accounts">
+{% set c = current %}
+<div class="card" id="form"><h2>{{ 'ویرایش «' ~ c.label ~ '»' if c else 'افزودن اکانت' }}</h2>
+<p class="muted">همه‌ی پلتفرم‌ها از طریق API رسمی خودشان کار می‌کنند؛ برای هر اکانت توکن/کلید API همان اکانت را وارد کن.{% if c %} فیلدهای رمز/توکن را خالی بگذاری، مقدار قبلی حفظ می‌شود.{% endif %}</p>
+<form method="post" action="/accounts" autocomplete="off">
+  {% if c %}<input type="hidden" name="id" value="{{ c.id }}">{% endif %}
   <div class="grid">
-    <label><span>شناسه‌ی اکانت برای ویرایش (خالی = جدید)</span><input name="id" type="number"></label>
-    <label><span>پلتفرم *</span><select name="kind" id="kind" required>{% for k, v in kinds.items() %}<option value="{{ k }}">{{ k }} — {{ 'مقاله/بک‌لینک' if v.category == 'article' else 'سوشیال' }}</option>{% endfor %}</select></label>
-    <label><span>نام اکانت</span><input name="label"></label>
-    <label><span>گروه (برای انتخاب در کمپین)</span><input name="tag" list="tags"><datalist id="tags">{% for t in tags %}<option>{{ t }}</option>{% endfor %}</datalist></label>
-    <label><span>حداقل فاصله بین دو پست (ساعت)</span><input name="min_hours_between" type="number" step="0.5" value="12"></label>
-    <label><span>سقف پست روزانه این اکانت</span><input name="daily_limit" type="number" value="3"></label>
+    <label><span>پلتفرم *</span><select name="kind" id="kind" required autocomplete="off">{% for k, v in kinds.items() %}<option value="{{ k }}" {{ 'selected' if c and c.kind == k }}>{{ k }} — {{ 'مقاله/بک‌لینک' if v.category == 'article' else 'سوشیال' }}</option>{% endfor %}</select></label>
+    <label><span>نام اکانت</span><input name="label" value="{{ c.label if c }}"></label>
+    <label><span>گروه (برای انتخاب در کمپین)</span><input name="tag" list="tags" value="{{ c.tag if c }}"><datalist id="tags">{% for t in tags %}<option>{{ t }}</option>{% endfor %}</datalist></label>
+    <label><span>حداقل فاصله بین دو پست (ساعت)</span><input name="min_hours_between" type="number" step="0.5" value="{{ c.min_hours_between if c else 12 }}"></label>
+    <label><span>سقف پست روزانه این اکانت</span><input name="daily_limit" type="number" value="{{ c.daily_limit if c else 3 }}"></label>
   </div>
   <div class="grid" id="fields"></div>
-  <label><span>یادداشت</span><input name="notes"></label>
-  <button>ذخیره</button>
+  <label><span>یادداشت</span><input name="notes" value="{{ c.notes if c }}"></label>
+  <button>ذخیره</button> {% if c %}<a href="/accounts">انصراف</a>{% endif %}
 </form></div>
 
 <div class="card"><h2>ورود گروهی اکانت‌ها (CSV یا JSON)</h2>
@@ -49,16 +51,26 @@
 
 <script>
 const KINDS = {{ kinds|tojson }};
+const EDITING = {{ 'true' if c else 'false' }}, ORIG_KIND = {{ (c.kind if c else '')|tojson }};
+const VALUES = {{ current_creds|tojson }};
 const kindSel = document.getElementById('kind'), box = document.getElementById('fields');
 function draw(){
   box.innerHTML = '';
+  const same = kindSel.value === ORIG_KIND;
   for (const [name, req, hint] of KINDS[kindSel.value].fields){
-    const l = document.createElement('label');
+    const l = document.createElement('label'), span = document.createElement('span'), inp = document.createElement('input');
     const secret = /token|secret|password|key/.test(name);
-    l.innerHTML = `<span>${name}${req ? ' *' : ''} <i>${hint || ''}</i></span><input class="ltr" name="cred_${name}" type="${secret ? 'password' : 'text'}" autocomplete="off">`;
-    box.appendChild(l);
+    span.innerHTML = `${name}${req ? ' *' : ''} <i></i>`;
+    span.querySelector('i').textContent = hint || '';
+    inp.className = 'ltr'; inp.name = 'cred_' + name; inp.autocomplete = secret ? 'new-password' : 'off';
+    inp.type = secret ? 'password' : 'text';
+    if (same && VALUES[name] !== undefined) inp.value = VALUES[name];
+    if (EDITING && same && secret) inp.placeholder = 'خالی = بدون تغییر';
+    l.append(span, inp); box.appendChild(l);
   }
 }
-kindSel.addEventListener('change', draw); draw();
+kindSel.addEventListener('change', draw);
+// the browser may restore the dropdown after load (back button / reload) — redraw then too
+window.addEventListener('pageshow', draw); draw();
 </script>
 {% endblock %}

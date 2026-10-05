@@ -19,7 +19,7 @@ from . import engine, importer, scheduler
 from . import models as m
 from .config import settings
 from .publishers import REGISTRY
-from .publishers.fields import KIND_FIELDS, masked, missing_fields
+from .publishers.fields import KIND_FIELDS, is_secret, masked, missing_fields
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -225,7 +225,7 @@ def site_delete(site_id: int):
 
 
 @app.get("/accounts", response_class=HTMLResponse, dependencies=protected)
-def accounts_page(request: Request, tag: str = "", kind: str = ""):
+def accounts_page(request: Request, tag: str = "", kind: str = "", edit: int = 0):
     with m.session() as s:
         q = select(m.Account).order_by(m.Account.kind, m.Account.id)
         if tag:
@@ -237,7 +237,11 @@ def accounts_page(request: Request, tag: str = "", kind: str = ""):
         sites = s.exec(select(m.Site)).all()
     rows = [{"a": a, "creds": masked(a.creds)} for a in accounts]
     kinds = {k: {"category": REGISTRY[k].category, "fields": KIND_FIELDS.get(k, [])} for k in sorted(REGISTRY)}
-    return render(request, "accounts.html", rows=rows, kinds=kinds, tags=tags, sites=sites, f_tag=tag, f_kind=kind)
+    current = _get(m.Account, edit) if edit else None
+    # Prefill non-secret values only; secret fields stay empty (= keep the stored value).
+    current_creds = {k: v for k, v in current.creds.items() if not is_secret(k)} if current else {}
+    return render(request, "accounts.html", rows=rows, kinds=kinds, tags=tags, sites=sites, f_tag=tag, f_kind=kind,
+                  current=current, current_creds=current_creds)
 
 
 @app.post("/accounts", dependencies=protected)
