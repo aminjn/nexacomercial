@@ -13,7 +13,8 @@
   <h2>هوش مصنوعی</h2>
   <p class="muted" style="margin:0 0 8px">نوع: <code>{{ settings.llm_provider }}</code> · آدرس: <code>{{ settings.llm_base_url if settings.llm_provider != 'anthropic' else 'Claude API' }}</code> · مدل: <code>{{ settings.llm_model if settings.llm_provider != 'anthropic' else settings.anthropic_model }}</code></p>
   <form class="inline" method="post" action="/llm-test"><button class="sec">تست هوش مصنوعی</button></form>
-  <span class="muted" style="font-size:12px">قبل از هر چیز این را بزن؛ تا هوش مصنوعی وصل نباشد هیچ محتوایی ساخته نمی‌شود. تنظیمش در فایل <code>.env</code> (متغیرهای <code>APP_LLM_*</code>) است.</span>
+  <a class="btn" href="/settings">تنظیم هوش مصنوعی</a>
+  <span class="muted" style="font-size:12px">تا هوش مصنوعی وصل نباشد هیچ محتوایی ساخته نمی‌شود.</span>
 </div>
 
 <div class="card">

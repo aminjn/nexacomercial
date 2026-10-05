@@ -136,6 +136,7 @@ _engine = None
 def engine():
     global _engine
     if _engine is None:
+        from . import runtime  # noqa: F401 — registers the settings table
         _engine = create_engine(settings.db_url, connect_args={"check_same_thread": False})
         SQLModel.metadata.create_all(_engine)
     return _engine

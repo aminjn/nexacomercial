@@ -272,3 +272,34 @@ def test_llm_test_button():
     with TestClient(app) as client:
         r = client.post("/llm-test")
         assert "هوش مصنوعی: وصل است" in r.text  # fake provider in tests
+
+
+def test_settings_page_saves_and_applies(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import runtime
+    from app.config import settings
+    from app.main import app
+    with TestClient(app) as client:
+        assert client.get("/settings").status_code == 200
+        r = client.post("/settings", data={"llm_provider": "ollama", "llm_base_url": "http://9.9.9.9:11434",
+                                           "llm_api_key": "sekret", "llm_model": "qwen2.5:14b",
+                                           "llm_timeout_sec": "300", "publish_proxy": "http://p:3128"})
+        assert "ذخیره شد" in r.text
+        assert (settings.llm_provider, settings.llm_base_url, settings.llm_api_key, settings.dry_run) == \
+            ("ollama", "http://9.9.9.9:11434", "sekret", False)
+        with m.session() as s:
+            assert "sekret" not in s.get(runtime.AppSetting, "llm_api_key").value  # encrypted at rest
+        # empty secret keeps the stored one; values survive a reload
+        client.post("/settings", data={"llm_provider": "ollama", "llm_base_url": "http://9.9.9.9:11434",
+                                       "llm_model": "m2", "dry_run": "1"})
+        settings.llm_api_key = ""
+        runtime.apply()
+        assert (settings.llm_api_key, settings.llm_model, settings.dry_run, settings.publish_proxy) == \
+            ("sekret", "m2", True, "http://p:3128")
+        monkeypatch.setattr(httpx, "get", lambda url, **kw: httpx.Response(
+            200, json={"models": [{"name": "qwen2.5:14b"}]}, request=httpx.Request("GET", url)))
+        assert client.get("/settings/models", params={"provider": "ollama", "base_url": "http://x:11434"}).json() \
+            == {"models": ["qwen2.5:14b"]}
+        client.post("/settings", data={"llm_provider": "fake", "clear_llm_api_key": "1", "clear_publish_proxy": "1"})
+        assert settings.llm_api_key == "" and settings.publish_proxy == ""

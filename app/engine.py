@@ -175,9 +175,9 @@ def explain_error(stage: str, kind: str, e: Exception) -> str:
     else:
         why = ""
     if stage == "ai":
-        todo = "تنظیمات APP_LLM_* در فایل .env را چک کن و در داشبورد «تست هوش مصنوعی» را بزن."
+        todo = "در صفحه‌ی «تنظیمات» آدرس سرور و مدل هوش مصنوعی را چک کن و «تست اتصال» را بزن."
     elif stage == "publish" and ("connect" in low or "timeout" in low or "timed out" in low or "name resolution" in low):
-        todo = "اگر این پلتفرم در ایران فیلتر است، APP_PUBLISH_PROXY را در .env تنظیم کن."
+        todo = "اگر این پلتفرم در ایران فیلتر است، در صفحه‌ی «تنظیمات» پراکسی انتشار را بگذار."
     elif stage == "publish" and why.startswith("توکن"):
         todo = "در صفحه‌ی اکانت‌ها اطلاعات این اکانت را ویرایش کن."
     else:

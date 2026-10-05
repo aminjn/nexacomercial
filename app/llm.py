@@ -70,6 +70,18 @@ class OllamaLLM:
         return r.json()["message"]["content"]
 
 
+def list_models(provider: str, base_url: str, api_key: str = "", timeout: float = 15) -> list[str]:
+    """Models available on the configured server (Ollama or OpenAI-compatible)."""
+    if provider == "ollama":
+        return ollama_models(base_url, api_key, timeout)
+    if provider == "openai":
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        r = httpx.get(f"{base_url.rstrip('/')}/models", headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return sorted(x["id"] for x in r.json().get("data", []))
+    return []
+
+
 def ollama_models(base_url: str, api_key: str = "", timeout: float = 15) -> list[str]:
     """Models installed on an Ollama server (connection check)."""
     base = base_url.rstrip("/").removesuffix("/v1").removesuffix("/api")

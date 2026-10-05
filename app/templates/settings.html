@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block body %}
+<form method="post" action="/settings" autocomplete="off">
+<div class="card"><h2>هوش مصنوعی</h2>
+<p class="muted">مدلی که مقاله‌ها و پست‌ها را می‌نویسد. سرور هوش مصنوعی خودت را این‌جا وصل کن، ذخیره کن و بعد «تست اتصال» را بزن.</p>
+<div class="grid">
+  <label><span>نوع سرویس</span>
+    <select name="llm_provider" id="provider">
+      {% for k, v in [('ollama','Ollama (سرور خودت)'),('openai','سرویس سازگار با OpenAI (vLLM، LM Studio، OpenRouter، ...)'),('anthropic','Claude (API رسمی Anthropic)'),('fake','آزمایشی — متن ثابت، بدون هوش مصنوعی')] %}
+      <option value="{{ k }}" {{ 'selected' if settings.llm_provider == k }}>{{ v }}</option>{% endfor %}
+    </select>
+    <small class="help" id="provider_help"></small></label>
+</div>
+
+<div class="grid" data-for="ollama openai">
+  <label><span>آدرس سرور *</span><input name="llm_base_url" id="base_url" class="ltr" value="{{ settings.llm_base_url }}">
+    <small class="help" data-for="ollama">آی‌پی یا دامنه‌ی سرور Ollama به‌همراه پورت؛ مثل <code>http://1.2.3.4:11434</code></small>
+    <small class="help" data-for="openai">آدرس پایه‌ی API که به <code>/v1</code> ختم می‌شود؛ مثل <code>http://1.2.3.4:8000/v1</code> یا <code>https://openrouter.ai/api/v1</code></small></label>
+  <label><span>کلید API</span><input name="llm_api_key" id="api_key" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_llm_key else '' }}">
+    <small class="help" data-for="ollama">اختیاری. Ollama خودش رمز ندارد؛ فقط اگر جلوی آن nginx با توکن گذاشته‌ای، توکن را این‌جا بگذار.</small>
+    <small class="help" data-for="openai">کلیدی که سرویس به تو داده (برای vLLM / LM Studio بدون رمز، خالی بگذار).</small>
+    {% if has_llm_key %}<span class="check"><input type="checkbox" name="clear_llm_api_key" value="1"> حذف کلید ذخیره‌شده</span>{% endif %}</label>
+  <label><span>مدل *</span><input name="llm_model" id="model" class="ltr" list="model_list" value="{{ settings.llm_model }}"><datalist id="model_list"></datalist>
+    <small class="help">اسم مدلی که روی سرور هست. دکمه‌ی «دریافت لیست مدل‌ها» را بزن تا از خود سرور بخواند و از لیست انتخاب کنی.</small>
+    <button type="button" class="sec" id="fetch_models" style="margin-top:6px">دریافت لیست مدل‌ها از سرور</button>
+    <small class="help" id="models_msg"></small></label>
+</div>
+
+<div class="grid" data-for="anthropic">
+  <label><span>کلید API Anthropic *</span><input name="anthropic_api_key" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_anthropic_key else 'sk-ant-...' }}">
+    <small class="help">از console.anthropic.com ← API Keys.</small>
+    {% if has_anthropic_key %}<span class="check"><input type="checkbox" name="clear_anthropic_api_key" value="1"> حذف کلید</span>{% endif %}</label>
+  <label><span>مدل Claude</span><input name="anthropic_model" class="ltr" value="{{ settings.anthropic_model }}"></label>
+</div>
+
+<div class="grid" data-for="ollama openai anthropic">
+  <label><span>حداکثر زمان انتظار برای هر متن (ثانیه)</span><input name="llm_timeout_sec" type="number" min="30" value="{{ settings.llm_timeout_sec|int }}">
+    <small class="help">مدل روی CPU کند است؛ برای مقاله‌ی کامل ۶۰۰ ثانیه مناسب است.</small></label>
+</div>
+
+<details class="guide" data-for="ollama"><summary>سرور Ollama را چطور آماده کنم که از بیرون وصل شود؟</summary>
+  <ol>
+    <li>Ollama به‌طور پیش‌فرض فقط به خود همان سرور جواب می‌دهد. روی سرور Ollama بزن: <code class="ltr">sudo systemctl edit ollama</code></li>
+    <li>این دو خط را اضافه کن و ذخیره کن: <code class="ltr">[Service]</code> و <code class="ltr">Environment="OLLAMA_HOST=0.0.0.0:11434"</code></li>
+    <li><code class="ltr">sudo systemctl restart ollama</code></li>
+    <li>Ollama رمز ندارد؛ پورت را فقط برای آی‌پی سرور این داشبورد باز کن: <code class="ltr">sudo ufw allow from IP-این-سرور to any port 11434</code></li>
+    <li>مدل را اگر نداری دانلود کن، مثلاً: <code class="ltr">ollama pull qwen2.5:14b</code> — لیست مدل‌ها: <code class="ltr">ollama list</code></li>
+  </ol>
+</details>
+</div>
+
+<div class="card"><h2>انتشار</h2>
+<div class="grid">
+  <label class="check" style="display:flex"><input type="checkbox" name="dry_run" value="1" {{ 'checked' if settings.dry_run }}> حالت آزمایشی (DRY RUN)
+    </label>
+  <label><span>آدرس عمومی این داشبورد</span><input name="public_url" class="ltr" value="{{ settings.public_url }}" placeholder="https://cm.nojanteb.ir">
+    <small class="help">لینک تصاویر آپلودشده با این آدرس ساخته می‌شود تا اینستاگرام/پینترست بتوانند دانلودشان کنند.</small></label>
+  <label><span>پراکسی انتشار</span><input name="publish_proxy" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_proxy else 'http://user:pass@1.2.3.4:3128' }}">
+    <small class="help">سرور ایران به تلگرام، X، فیسبوک، اینستاگرام و ... وصل نمی‌شود. یک پراکسی HTTP روی سرور خارج بگذار؛ فقط برای انتشار استفاده می‌شود (هوش مصنوعی از آن رد نمی‌شود).</small>
+    {% if has_proxy %}<span class="check"><input type="checkbox" name="clear_publish_proxy" value="1"> حذف پراکسی</span>{% endif %}</label>
+</div>
+<p class="muted" style="font-size:12px">حالت آزمایشی روشن = محتوا ساخته و در «انتشارها» نشان داده می‌شود ولی واقعاً جایی منتشر نمی‌شود. وقتی از خروجی راضی بودی خاموشش کن.</p>
+</div>
+
+<button>ذخیره‌ی تنظیمات</button>
+</form>
+<form method="post" action="/llm-test?next=/settings" style="margin-top:10px"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
+
+<style>
+.help{display:block;color:var(--muted);font-size:12px;margin-top:3px;line-height:1.7}
+.guide{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:6px 0}
+.guide summary{cursor:pointer;font-weight:bold}.guide ol{padding-right:20px}.guide li{margin-bottom:6px}
+</style>
+<script>
+const HELP = {
+  ollama: 'Ollama روی سرور خودت (پیشنهادی). آدرس سرور و اسم مدل را بده.',
+  openai: 'هر سرویسی که API آن شبیه OpenAI است: vLLM، LM Studio، LocalAI، OpenRouter و ...',
+  anthropic: 'API رسمی Claude؛ به کلید Anthropic نیاز دارد.',
+  fake: 'برای امتحان بقیه‌ی سیستم بدون هوش مصنوعی؛ یک متن آزمایشی ثابت می‌سازد. برای انتشار واقعی استفاده نکن.'
+};
+const prov = document.getElementById('provider');
+function show(){
+  document.getElementById('provider_help').textContent = HELP[prov.value];
+  document.querySelectorAll('[data-for]').forEach(e => { e.style.display = e.dataset.for.split(' ').includes(prov.value) ? '' : 'none'; });
+}
+prov.addEventListener('change', show); window.addEventListener('pageshow', show); show();
+
+document.getElementById('fetch_models').addEventListener('click', async () => {
+  const msg = document.getElementById('models_msg'), list = document.getElementById('model_list');
+  msg.textContent = 'در حال اتصال به سرور...';
+  const q = new URLSearchParams({provider: prov.value, base_url: document.getElementById('base_url').value,
+                                 api_key: document.getElementById('api_key').value});
+  try {
+    const r = await (await fetch('/settings/models?' + q)).json();
+    list.innerHTML = '';
+    for (const name of r.models) { const o = document.createElement('option'); o.value = name; list.appendChild(o); }
+    if (r.error) msg.textContent = 'وصل نشد: ' + r.error;
+    else if (!r.models.length) msg.textContent = 'وصل شد ولی هیچ مدلی روی سرور نیست (روی سرور: ollama pull اسم-مدل).';
+    else {
+      msg.textContent = 'وصل شد ✓ مدل‌ها: ' + r.models.join('، ') + ' — روی کادر مدل کلیک کن و انتخاب کن.';
+      const model = document.getElementById('model');
+      if (!r.models.includes(model.value)) model.value = r.models[0];
+    }
+  } catch (e) { msg.textContent = 'خطا: ' + e; }
+});
+</script>
+{% endblock %}

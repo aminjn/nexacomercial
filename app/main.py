@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from . import engine, importer, scheduler
+from . import engine, importer, runtime, scheduler
 from . import models as m
 from .config import settings
 from .publishers import REGISTRY
@@ -40,6 +40,7 @@ def auth(creds: HTTPBasicCredentials | None = Depends(security)) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     m.engine()
+    runtime.apply()
     if settings.scheduler_enabled:
         scheduler.start()
     yield
@@ -122,10 +123,52 @@ def tick_now(dry: bool = False):
 
 
 @app.post("/llm-test", dependencies=protected)
-def llm_test():
+def llm_test(next: str = "/"):
     from .llm import llm_check
     ok, msg = llm_check()
-    return back("/", ("هوش مصنوعی: " if ok else "هوش مصنوعی وصل نیست: ") + msg)
+    return back(next if next.startswith("/") else "/", ("هوش مصنوعی: " if ok else "هوش مصنوعی وصل نیست: ") + msg)
+
+
+# ---------------------------------------------------------------- settings (AI, proxy, ...)
+
+
+@app.get("/settings", response_class=HTMLResponse, dependencies=protected)
+def settings_page(request: Request):
+    return render(request, "settings.html", has_llm_key=bool(settings.llm_api_key),
+                  has_anthropic_key=bool(settings.anthropic_api_key), has_proxy=bool(settings.publish_proxy))
+
+
+@app.post("/settings", dependencies=protected)
+async def settings_save(request: Request):
+    f = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
+    provider = f.get("llm_provider", "ollama")
+    if provider not in ("ollama", "openai", "anthropic", "fake"):
+        return back("/settings", "نوع هوش مصنوعی نامعتبر است")
+    values: dict[str, Any] = {
+        "llm_provider": provider,
+        "llm_base_url": f.get("llm_base_url", "").strip(),
+        "llm_model": f.get("llm_model", "").strip(),
+        "anthropic_model": f.get("anthropic_model", "").strip() or settings.anthropic_model,
+        "llm_timeout_sec": float(f.get("llm_timeout_sec") or 600),
+        "public_url": f.get("public_url", "").strip().rstrip("/"),
+        "dry_run": bool(f.get("dry_run")),
+    }
+    # secrets: empty field = keep; "clear" checkbox = remove
+    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy"):
+        v = f.get(key, "").strip()
+        if v or f.get(f"clear_{key}"):
+            values[key] = v
+    runtime.save(values)
+    return back("/settings", "تنظیمات ذخیره شد")
+
+
+@app.get("/settings/models", dependencies=protected)
+def settings_models(provider: str, base_url: str, api_key: str = ""):
+    from .llm import list_models
+    try:
+        return {"models": list_models(provider, base_url, api_key or settings.llm_api_key)}
+    except Exception as e:  # noqa: BLE001
+        return {"models": [], "error": engine.explain_error("ai", "", e)}
 
 
 @app.post("/accounts/resume-all", dependencies=protected)
