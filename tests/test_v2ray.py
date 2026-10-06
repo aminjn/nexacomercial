@@ -1,6 +1,8 @@
 import base64
 import json
 
+import httpx
+
 import pytest
 
 from app import v2ray
@@ -77,12 +79,12 @@ def test_settings_page_v2ray(monkeypatch):
     monkeypatch.setattr(v2ray, "start", lambda text: started.append(text))
     with TestClient(app) as client:
         r = client.post("/settings", data={"llm_provider": "fake", "v2ray_link": "not a link"})
-        assert "نامعتبر" in r.text and not settings.v2ray_link
+        assert "ذخیره نشد" in r.text and not settings.v2ray_link
         r = client.post("/settings", data={"llm_provider": "fake", "v2ray_link": "trojan://p@h.com:443#srv"})
         assert "ذخیره شد" in r.text
         assert settings.v2ray_enabled and settings.v2ray_link == "trojan://p@h.com:443#srv"
         assert started == ["trojan://p@h.com:443#srv"]
-        assert "srv" in client.get("/settings").text
+        assert "v2ray (فیلترشکن داخلی)" in client.get("/settings").text
         client.post("/settings", data={"llm_provider": "fake"})  # unchecked = off, link kept
         assert not settings.v2ray_enabled and settings.v2ray_link
         client.post("/settings", data={"llm_provider": "fake", "clear_v2ray_link": "1"})
@@ -107,3 +109,21 @@ def test_upload_xray(monkeypatch, tmp_path):
         assert (tmp_path / "xray").read_bytes() == b"\x7fELF-fake" and (tmp_path / "geoip.dat").exists()
         r = client.post("/v2ray-upload", files={"file": ("x.zip", b"junk")})
         assert "نامعتبر" in r.text
+
+
+def test_subscription_url(monkeypatch):
+    body = base64.b64encode(b"vless://a@h1.com:443?security=tls#one\ntrojan://p@h2.com:443#two\n").decode()
+    seen = []
+
+    def fake_get(url, **kw):
+        seen.append(kw.get("proxy"))
+        return httpx.Response(200, text=body, request=httpx.Request("GET", url))
+    monkeypatch.setattr(httpx, "get", fake_get)
+    links = v2ray.resolve("https://sub.example.com/sub/TOKEN")
+    assert links == ["vless://a@h1.com:443?security=tls#one", "trojan://p@h2.com:443#two"]
+    cfg = v2ray.build_config(v2ray.parse_all(links), 10809, 10808)
+    assert [o["tag"] for o in cfg["outbounds"]] == ["proxy-0", "proxy-1", "direct"]
+    assert cfg["routing"]["balancers"][0]["strategy"]["type"] == "leastPing"
+    # unreachable later: the saved copy is used
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: (_ for _ in ()).throw(httpx.ConnectError("down")))
+    assert v2ray.resolve("https://sub.example.com/sub/TOKEN") == links

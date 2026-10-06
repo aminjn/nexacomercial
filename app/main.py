@@ -71,7 +71,10 @@ def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
 
 def back(url: str, msg: str = "") -> RedirectResponse:
     from urllib.parse import quote
-    return RedirectResponse(f"{url}?msg={quote(msg)}" if msg else url, status_code=303)
+    path, _, frag = url.partition("#")
+    if msg:
+        path += ("&" if "?" in path else "?") + f"msg={quote(msg)}"
+    return RedirectResponse(path + (f"#{frag}" if frag else ""), status_code=303)
 
 
 def _list(v: str) -> list[str]:
@@ -141,6 +144,9 @@ def settings_page(request: Request):
                   v2=v2ray.status())
 
 
+V2RAY_PAGE = "/settings?at=v2ray#v2ray"
+
+
 @app.post("/settings", dependencies=protected)
 async def settings_save(request: Request):
     f = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
@@ -164,24 +170,24 @@ async def settings_save(request: Request):
         if v or f.get(f"clear_{key}"):
             values[key] = v
     if values.get("v2ray_link"):
-        links = v2ray.extract_links(values["v2ray_link"])
-        if not links:
-            return back("/settings", "لینک v2ray نامعتبر است: باید با vless:// یا vmess:// یا trojan:// یا ss:// شروع شود")
         try:
-            v2ray.parse(links[0])
+            v2ray.parse_all(v2ray.resolve(values["v2ray_link"]))
         except v2ray.V2rayError as e:
-            return back("/settings", f"لینک v2ray نامعتبر است: {e}")
+            return back(V2RAY_PAGE, f"کانفیگ v2ray ذخیره نشد: {e}")
         values["v2ray_enabled"] = True  # a freshly pasted profile is meant to be used
     runtime.save(values)
     err = v2ray.sync()
-    return back("/settings", "تنظیمات ذخیره شد" + (f" — ولی v2ray اجرا نشد: {err}" if err else ""))
+    if err or "v2ray_link" in values:
+        return back(V2RAY_PAGE, "تنظیمات ذخیره شد" + (f" — ولی v2ray اجرا نشد: {err}" if err else
+                                                     f" — v2ray روشن شد: {v2ray.status()['server']}"))
+    return back("/settings", "تنظیمات ذخیره شد")
 
 
 @app.post("/v2ray-test", dependencies=protected)
 def v2ray_test():
     v2ray.sync()
     ok, msg = v2ray.test()
-    return back("/settings", "v2ray: " + msg)
+    return back(V2RAY_PAGE, "v2ray: " + msg)
 
 
 @app.post("/v2ray-install", dependencies=protected)
@@ -189,10 +195,10 @@ def v2ray_install():
     try:
         path = v2ray.install_binary()
     except Exception as e:  # noqa: BLE001
-        return back("/settings", f"دانلود Xray نشد: {type(e).__name__}: {e} — اگر گیت‌هاب از سرور باز نمی‌شود، "
+        return back(V2RAY_PAGE, f"دانلود Xray نشد: {type(e).__name__}: {e} — اگر گیت‌هاب از سرور باز نمی‌شود، "
                                  f"فایل xray را دستی در {v2ray.local_dir()} بگذار")
     err = v2ray.sync()
-    return back("/settings", f"Xray نصب شد ({path})" + (f" — ولی اجرا نشد: {err}" if err else ""))
+    return back(V2RAY_PAGE, f"Xray نصب شد ({path})" + (f" — ولی اجرا نشد: {err}" if err else ""))
 
 
 @app.post("/v2ray-upload", dependencies=protected)
@@ -200,13 +206,13 @@ async def v2ray_upload(request: Request):
     upload = (await request.form()).get("file")
     data = await upload.read() if upload is not None and not isinstance(upload, str) else b""
     if not data:
-        return back("/settings", "فایلی انتخاب نشد")
+        return back(V2RAY_PAGE, "فایلی انتخاب نشد")
     try:
         path = v2ray.install_upload(data)
     except (ValueError, OSError) as e:
-        return back("/settings", f"فایل Xray نامعتبر است: {e}")
+        return back(V2RAY_PAGE, f"فایل Xray نامعتبر است: {e}")
     err = v2ray.sync()
-    return back("/settings", f"Xray نصب شد ({path})" + (f" — ولی اجرا نشد: {err}" if err else ""))
+    return back(V2RAY_PAGE, f"Xray نصب شد ({path})" + (f" — ولی اجرا نشد: {err}" if err else ""))
 
 
 @app.get("/settings/models", dependencies=protected)

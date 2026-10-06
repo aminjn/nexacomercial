@@ -47,6 +47,51 @@ def extract_links(text: str) -> list[str]:
     return [ln.strip() for ln in text.splitlines() if ln.strip().lower().startswith(PROTOCOLS)]
 
 
+def fetch_subscription(url: str, timeout: float = 25) -> str:
+    """Body of a subscription URL. Tried directly, then through the manual publish proxy; the last good
+    copy is kept on disk so Xray still starts when the subscription site is unreachable."""
+    cache = settings.data_path / "v2ray_sub.txt"
+    errors = []
+    for proxy in dict.fromkeys([None, settings.publish_proxy or None]):
+        try:
+            r = httpx.get(url, timeout=timeout, follow_redirects=True, proxy=proxy,
+                          headers={"User-Agent": "v2rayNG/1.9.16"})
+            r.raise_for_status()
+            if extract_links(r.text):
+                cache.write_text(r.text)
+                os.chmod(cache, 0o600)
+                return r.text
+            errors.append("لینک اشتراک هیچ کانفیگی برنگرداند")
+        except httpx.HTTPError as e:
+            errors.append(f"{type(e).__name__}: {e}")
+    if cache.exists():
+        log.warning("v2ray subscription unreachable, using the saved copy: %s", errors)
+        return cache.read_text()
+    raise V2rayError("لینک اشتراک باز نشد: " + " | ".join(errors))
+
+
+def resolve(text: str) -> list[str]:
+    """All share links in the setting: pasted links, base64 bodies and subscription URLs."""
+    urls = [w for w in text.split() if w.lower().startswith(("http://", "https://"))]
+    links = extract_links("\n".join(w for w in text.split() if w not in urls) if urls else text)
+    for url in urls:
+        links += extract_links(fetch_subscription(url))
+    return links
+
+
+def parse_all(links: list[str], limit: int = 50) -> list[dict[str, Any]]:
+    """Every link Xray can use (broken / unsupported entries are skipped)."""
+    out = []
+    for link in links:
+        try:
+            out.append(parse(link))
+        except (V2rayError, ValueError, KeyError) as e:
+            log.info("v2ray: skipping %s: %s", link[:40], e)
+    if not out:
+        raise V2rayError("هیچ کانفیگ قابل استفاده‌ای پیدا نشد (vless / vmess / trojan / ss)")
+    return out[:limit]
+
+
 def _stream(p: dict[str, str], host: str) -> dict[str, Any]:
     """streamSettings from the common share-link query parameters."""
     net = (p.get("type") or p.get("net") or "tcp").lower()
@@ -149,27 +194,38 @@ def parse(link: str) -> dict[str, Any]:
     return out
 
 
-def build_config(outbound: dict[str, Any], http_port: int, socks_port: int) -> dict[str, Any]:
-    ob = {k: v for k, v in outbound.items() if not k.startswith("_")}
-    return {
+def build_config(outbounds: dict[str, Any] | list[dict[str, Any]], http_port: int, socks_port: int) -> dict[str, Any]:
+    """One server: everything goes through it. Several (a subscription): Xray pings them all and
+    always uses the fastest one that works."""
+    obs = [outbounds] if isinstance(outbounds, dict) else outbounds
+    clean = [{k: v for k, v in o.items() if not k.startswith("_")} for o in obs]
+    cfg: dict[str, Any] = {
         "log": {"loglevel": "warning"},
         "inbounds": [
             {"tag": "http", "listen": "127.0.0.1", "port": http_port, "protocol": "http"},
             {"tag": "socks", "listen": "127.0.0.1", "port": socks_port, "protocol": "socks",
              "settings": {"udp": True}},
         ],
-        "outbounds": [{**ob, "tag": "proxy"}, {"protocol": "freedom", "tag": "direct"}],
+        "outbounds": [{**clean[0], "tag": "proxy"}, {"protocol": "freedom", "tag": "direct"}],
     }
+    if len(clean) > 1:
+        cfg["outbounds"] = [{**o, "tag": f"proxy-{i}"} for i, o in enumerate(clean)] + cfg["outbounds"][1:]
+        cfg["observatory"] = {"subjectSelector": ["proxy-"], "probeUrl": "https://www.gstatic.com/generate_204",
+                              "probeInterval": "1m", "enableConcurrency": True}
+        cfg["routing"] = {
+            "balancers": [{"tag": "auto", "selector": ["proxy-"], "strategy": {"type": "leastPing"}}],
+            "rules": [{"type": "field", "inboundTag": ["http", "socks"], "balancerTag": "auto"}],
+        }
+    return cfg
 
 
-def describe(text: str) -> str:
-    """Short label of the configured server for the settings page."""
-    try:
-        links = extract_links(text)
-        o = parse(links[0])
-        return " ".join(x for x in (o["_name"], f"({o['_server']})") if x)
-    except (V2rayError, IndexError):
-        return "لینک نامعتبر"
+def summary(outbounds: list[dict[str, Any]]) -> str:
+    """Short label of the configured server(s) for the settings page."""
+    first = outbounds[0]
+    one = " ".join(x for x in (first["_name"], f"({first['_server']})") if x)
+    if len(outbounds) == 1:
+        return one
+    return f"{len(outbounds)} سرور؛ خودکار سریع‌ترین سرور سالم انتخاب می‌شود"
 
 
 # ---------------------------------------------------------------- running Xray
@@ -178,7 +234,7 @@ def describe(text: str) -> str:
 _lock = threading.RLock()
 _proc: subprocess.Popen | None = None
 _logs: collections.deque[str] = collections.deque(maxlen=60)
-_state: dict[str, Any] = {"link": "", "error": "", "last_start": 0.0}
+_state: dict[str, Any] = {"link": "", "error": "", "last_start": 0.0, "summary": "", "count": 0}
 
 
 def local_dir() -> str:
@@ -228,10 +284,9 @@ def start(text: str) -> None:
     with _lock:
         stop()
         _state.update(link=text, error="", last_start=time.time())
-        links = extract_links(text)
-        if not links:
-            raise V2rayError("هیچ لینک vless/vmess/trojan/ss پیدا نشد")
-        cfg = build_config(parse(links[0]), settings.v2ray_http_port, settings.v2ray_socks_port)
+        obs = parse_all(resolve(text))
+        _state.update(summary=summary(obs), count=len(obs))
+        cfg = build_config(obs, settings.v2ray_http_port, settings.v2ray_socks_port)
         exe = binary()
         if not exe:
             raise V2rayError("برنامه‌ی Xray نصب نیست — دکمه‌ی «نصب Xray» را بزن")
@@ -247,7 +302,7 @@ def start(text: str) -> None:
         if _proc.poll() is not None:
             time.sleep(0.2)
             raise V2rayError("Xray اجرا نشد: " + " | ".join(list(_logs)[-5:]))
-        log.info("v2ray started: %s", describe(text))
+        log.info("v2ray started: %s", _state["summary"])
 
 
 def sync() -> str:
@@ -288,7 +343,7 @@ def llm_proxy() -> str | None:
 
 def status() -> dict[str, Any]:
     return {"enabled": settings.v2ray_enabled and bool(settings.v2ray_link), "running": running(),
-            "error": _state["error"], "server": describe(settings.v2ray_link) if settings.v2ray_link else "",
+            "error": _state["error"], "server": _state["summary"] if settings.v2ray_link else "",
             "binary": binary(), "logs": list(_logs)[-15:]}
 
 
@@ -299,12 +354,19 @@ def test(timeout: float = 20) -> tuple[bool, str]:
         return False, "v2ray روشن نیست"
     if not running():
         return False, _state["error"] or "Xray اجرا نیست"
-    t = time.time()
-    try:
-        r = httpx.get("https://cloudflare.com/cdn-cgi/trace", proxy=proxy, timeout=timeout)
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        tail = " | ".join(list(_logs)[-3:])
-        return False, f"از طریق v2ray به اینترنت وصل نشد: {type(e).__name__}: {e}" + (f" — لاگ Xray: {tail}" if tail else "")
+    # with several servers Xray needs a few seconds after start to ping them and pick one
+    for attempt in range(3 if _state["count"] > 1 else 1):
+        t = time.time()
+        try:
+            r = httpx.get("https://cloudflare.com/cdn-cgi/trace", proxy=proxy, timeout=timeout)
+            r.raise_for_status()
+            break
+        except httpx.HTTPError as e:
+            if attempt < (2 if _state["count"] > 1 else 0):
+                time.sleep(5)
+                continue
+            tail = " | ".join(list(_logs)[-3:])
+            return False, (f"از طریق v2ray به اینترنت وصل نشد: {type(e).__name__}: {e}"
+                           + (f" — لاگ Xray: {tail}" if tail else ""))
     info = dict(ln.split("=", 1) for ln in r.text.splitlines() if "=" in ln)
     return True, f"وصل است ✓ آی‌پی خروجی {info.get('ip', '?')} ({info.get('loc', '?')})، {int((time.time() - t) * 1000)} میلی‌ثانیه"

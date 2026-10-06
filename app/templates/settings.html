@@ -63,6 +63,7 @@
 </div>
 
 <div class="card" id="v2ray"><h2>v2ray (فیلترشکن داخلی)</h2>
+{% if msg and request.query_params.get('at') == 'v2ray' %}<div class="msg">{{ msg }}</div>{% endif %}
 <p class="muted">لینک کانفیگ v2ray خودت را این‌جا بگذار؛ برنامه خودش Xray را اجرا می‌کند و انتشار در تلگرام، X، اینستاگرام و ... از طریق آن انجام می‌شود. دیگر لازم نیست پراکسی HTTP جدا بسازی.</p>
 <p>وضعیت:
   {% if not v2.enabled %}<span class="muted">خاموش</span>
@@ -71,9 +72,9 @@
   {% if not v2.binary %}<br><span class="error">برنامه‌ی Xray روی سرور نصب نیست؛ دکمه‌ی «نصب Xray» پایین صفحه را بزن.</span>{% endif %}
 </p>
 <div class="grid">
-  <label style="grid-column:1/-1"><span>لینک کانفیگ (vless:// ، vmess:// ، trojan:// ، ss://)</span>
+  <label style="grid-column:1/-1"><span>لینک کانفیگ (vless:// ، vmess:// ، trojan:// ، ss://) یا لینک اشتراک (https://...)</span>
     <textarea name="v2ray_link" class="ltr" rows="3" autocomplete="off" spellcheck="false" placeholder="{{ 'ذخیره شده: ' ~ v2.server ~ ' — خالی = بدون تغییر، برای عوض کردن لینک جدید بگذار' if settings.v2ray_link else 'vless://uuid@server.com:443?security=reality&sni=...&pbk=...#name' }}"></textarea>
-    <small class="help">همان لینکی که در v2rayNG / Hiddify / Nekobox کپی می‌کنی. اگر چند لینک یا متن base64 اشتراک (subscription) بگذاری، اولین لینک استفاده می‌شود.</small>
+    <small class="help">همان لینکی که در v2rayNG / Hiddify / Nekobox کپی می‌کنی. لینک اشتراک (subscription، مثل <code>https://.../sub/...</code>) هم قبول است: همه‌ی سرورهایش استفاده می‌شوند و Xray خودش هر دقیقه سریع‌ترین سرور سالم را انتخاب می‌کند.</small>
     {% if settings.v2ray_link %}<span class="check"><input type="checkbox" name="clear_v2ray_link" value="1"> حذف کانفیگ</span>{% endif %}</label>
 </div>
 <div class="grid">
