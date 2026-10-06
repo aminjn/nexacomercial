@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from .. import v2ray
 from ..config import settings
 from ..content import Article, SocialPost
 
@@ -44,14 +45,14 @@ class Publisher:
     def http(self, **kw: Any) -> httpx.Client:
         kw.setdefault("timeout", settings.http_timeout_sec)
         kw.setdefault("follow_redirects", True)
-        if settings.publish_proxy:
-            kw.setdefault("proxy", settings.publish_proxy)
+        if proxy := v2ray.publish_proxy():
+            kw.setdefault("proxy", proxy)
         return httpx.Client(**kw)
 
     @staticmethod
     def proxies() -> dict[str, str] | None:
         """Proxy mapping for requests-based clients (OAuth1Session)."""
-        p = settings.publish_proxy
+        p = v2ray.publish_proxy()
         return {"http": p, "https": p} if p else None
 
     @staticmethod

@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     # Needed on servers inside Iran, where Telegram / X / Meta / ... are not reachable directly.
     publish_proxy: str = ""
 
+    # Built-in v2ray client (set from the settings page): a vless/vmess/trojan/ss share link. Xray runs
+    # inside the app and publishing goes through it (takes priority over publish_proxy).
+    v2ray_enabled: bool = False
+    v2ray_link: str = ""
+    v2ray_for_llm: bool = False  # also send AI requests through it (e.g. for the Claude API)
+    v2ray_http_port: int = 10809
+    v2ray_socks_port: int = 10808
+    xray_bin: str = ""  # empty = <data_dir>/xray/xray or `xray` on PATH
+    xray_download_url: str = ""  # empty = latest release from GitHub
+
     # HTTP timeouts for publishers.
     http_timeout_sec: float = 60.0
 

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from . import v2ray
 from .config import settings
 
 log = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ def _norm(u: str) -> str:
 def check_backlink(page_url: str, link_url: str) -> tuple[bool, str]:
     """Return (found, rel). rel is "" for dofollow, else the rel value (nofollow/ugc/sponsored)."""
     try:
-        r = httpx.get(page_url, timeout=settings.http_timeout_sec, follow_redirects=True,
+        r = httpx.get(page_url, timeout=settings.http_timeout_sec, follow_redirects=True, proxy=v2ray.publish_proxy() or None,
                       headers={"User-Agent": "Mozilla/5.0 (compatible; AutoBacklinkChecker/1.0)"})
     except httpx.HTTPError as e:
         log.warning("linkcheck %s: %s", page_url, e)

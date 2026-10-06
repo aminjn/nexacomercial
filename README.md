@@ -86,6 +86,13 @@ docker compose exec nexa python -m app.cli llm-test
 - آپدیت: `git pull && docker compose up -d --build`
 - لاگ: `docker compose logs -f nexa`
 
+### v2ray برای انتشار (سرور ایران)
+تلگرام، X، اینستاگرام و ... از سرور ایران باز نمی‌شوند. در داشبورد ← «تنظیمات» ← بخش **v2ray**
+لینک کانفیگ خودت (`vless://` ، `vmess://` ، `trojan://` یا `ss://`) را بگذار و ذخیره کن، بعد «تست اتصال v2ray»
+را بزن. برنامه خودش Xray را داخل کانتینر اجرا می‌کند و انتشار از آن رد می‌شود.
+Xray هنگام build از گیت‌هاب دانلود می‌شود؛ اگر نشد، در همان صفحه دکمه‌ی «نصب Xray» را بزن یا فایل `xray`
+را دستی در `data/xray/` بگذار (یا هنگام build آینه بده: `XRAY_URL=https://.../Xray-linux-64.zip docker compose build`).
+
 ### به‌جای Ollama
 هر API سازگار با OpenAI هم کار می‌کند: `APP_LLM_PROVIDER=openai` و `APP_LLM_BASE_URL`،
 `APP_LLM_API_KEY` و `APP_LLM_MODEL`. برای Claude هم `APP_LLM_PROVIDER=anthropic`.

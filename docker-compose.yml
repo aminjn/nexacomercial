@@ -4,6 +4,7 @@ services:
       context: .
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        XRAY_URL: ${XRAY_URL:-}
     container_name: nexa-backlink
     restart: unless-stopped
     ports:

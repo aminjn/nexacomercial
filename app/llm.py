@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 import httpx
 
+from . import v2ray
 from .config import settings
 
 log = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class OpenAICompatLLM:
             json=body,
             headers={"Authorization": f"Bearer {self.api_key}"},
             timeout=self.timeout,
+            proxy=v2ray.llm_proxy(),
         )
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
@@ -64,7 +66,8 @@ class OllamaLLM:
         if json_mode:
             body["format"] = "json"
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        r = httpx.post(f"{self.base_url}/api/chat", json=body, headers=headers, timeout=self.timeout)
+        r = httpx.post(f"{self.base_url}/api/chat", json=body, headers=headers, timeout=self.timeout,
+                       proxy=v2ray.llm_proxy())
         if r.status_code >= 400:
             raise RuntimeError(f"Ollama HTTP {r.status_code}: {r.text[:300]}")
         return r.json()["message"]["content"]
@@ -76,7 +79,7 @@ def list_models(provider: str, base_url: str, api_key: str = "", timeout: float 
         return ollama_models(base_url, api_key, timeout)
     if provider == "openai":
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        r = httpx.get(f"{base_url.rstrip('/')}/models", headers=headers, timeout=timeout)
+        r = httpx.get(f"{base_url.rstrip('/')}/models", headers=headers, timeout=timeout, proxy=v2ray.llm_proxy())
         r.raise_for_status()
         return sorted(x["id"] for x in r.json().get("data", []))
     return []
@@ -86,7 +89,7 @@ def ollama_models(base_url: str, api_key: str = "", timeout: float = 15) -> list
     """Models installed on an Ollama server (connection check)."""
     base = base_url.rstrip("/").removesuffix("/v1").removesuffix("/api")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    r = httpx.get(f"{base}/api/tags", headers=headers, timeout=timeout)
+    r = httpx.get(f"{base}/api/tags", headers=headers, timeout=timeout, proxy=v2ray.llm_proxy())
     r.raise_for_status()
     return [x["name"] for x in r.json().get("models", [])]
 
@@ -97,7 +100,9 @@ class AnthropicLLM:
     def __init__(self, api_key: str, model: str, timeout: float) -> None:
         import anthropic  # imported lazily so the package is optional
 
-        self.client = anthropic.Anthropic(api_key=api_key or None, timeout=timeout)
+        proxy = v2ray.llm_proxy()
+        self.client = anthropic.Anthropic(api_key=api_key or None, timeout=timeout,
+                                          http_client=httpx.Client(proxy=proxy, timeout=timeout) if proxy else None)
         self.model = model
 
     def complete(self, system: str, user: str, *, json_mode: bool = False) -> str:

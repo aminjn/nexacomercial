@@ -62,9 +62,36 @@
 <p class="muted" style="font-size:12px">حالت آزمایشی روشن = محتوا ساخته و در «انتشارها» نشان داده می‌شود ولی واقعاً جایی منتشر نمی‌شود. وقتی از خروجی راضی بودی خاموشش کن.</p>
 </div>
 
+<div class="card" id="v2ray"><h2>v2ray (فیلترشکن داخلی)</h2>
+<p class="muted">لینک کانفیگ v2ray خودت را این‌جا بگذار؛ برنامه خودش Xray را اجرا می‌کند و انتشار در تلگرام، X، اینستاگرام و ... از طریق آن انجام می‌شود. دیگر لازم نیست پراکسی HTTP جدا بسازی.</p>
+<p>وضعیت:
+  {% if not v2.enabled %}<span class="muted">خاموش</span>
+  {% elif v2.running %}<span class="ok">● در حال اجرا</span> — {{ v2.server }}
+  {% else %}<span class="error">● اجرا نشد</span> — {{ v2.error }}{% endif %}
+  {% if not v2.binary %}<br><span class="error">برنامه‌ی Xray روی سرور نصب نیست؛ دکمه‌ی «نصب Xray» پایین صفحه را بزن.</span>{% endif %}
+</p>
+<div class="grid">
+  <label style="grid-column:1/-1"><span>لینک کانفیگ (vless:// ، vmess:// ، trojan:// ، ss://)</span>
+    <textarea name="v2ray_link" class="ltr" rows="3" autocomplete="off" spellcheck="false" placeholder="{{ 'ذخیره شده: ' ~ v2.server ~ ' — خالی = بدون تغییر، برای عوض کردن لینک جدید بگذار' if settings.v2ray_link else 'vless://uuid@server.com:443?security=reality&sni=...&pbk=...#name' }}"></textarea>
+    <small class="help">همان لینکی که در v2rayNG / Hiddify / Nekobox کپی می‌کنی. اگر چند لینک یا متن base64 اشتراک (subscription) بگذاری، اولین لینک استفاده می‌شود.</small>
+    {% if settings.v2ray_link %}<span class="check"><input type="checkbox" name="clear_v2ray_link" value="1"> حذف کانفیگ</span>{% endif %}</label>
+</div>
+<div class="grid">
+  <label class="check" style="display:flex"><input type="checkbox" name="v2ray_enabled" value="1" {{ 'checked' if settings.v2ray_enabled }}> روشن — انتشار و بررسی لینک‌ها از v2ray رد شود</label>
+  <label class="check" style="display:flex"><input type="checkbox" name="v2ray_for_llm" value="1" {{ 'checked' if settings.v2ray_for_llm }}> هوش مصنوعی هم از v2ray رد شود
+    </label>
+</div>
+<small class="help">«هوش مصنوعی هم» را فقط وقتی بزن که سرویس هوش مصنوعی از ایران باز نمی‌شود (مثلاً API رسمی Claude). برای سرور Ollama خودت لازم نیست. وقتی v2ray روشن است، «پراکسی انتشار» بالا نادیده گرفته می‌شود.</small>
+{% if v2.logs %}<details class="guide"><summary>لاگ Xray</summary><pre class="ltr" style="white-space:pre-wrap;font-size:12px">{{ v2.logs|join('\n') }}</pre></details>{% endif %}
+</div>
+
 <button>ذخیره‌ی تنظیمات</button>
 </form>
-<form method="post" action="/llm-test?next=/settings" style="margin-top:10px"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
+<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+<form method="post" action="/llm-test?next=/settings"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
+<form method="post" action="/v2ray-test"><button class="sec">تست اتصال v2ray</button></form>
+<form method="post" action="/v2ray-install"><button class="sec">{{ 'به‌روزرسانی Xray' if v2.binary else 'نصب Xray' }}</button></form>
+</div>
 
 <style>
 .help{display:block;color:var(--muted);font-size:12px;margin-top:3px;line-height:1.7}

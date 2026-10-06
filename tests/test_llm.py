@@ -8,7 +8,7 @@ from app.llm import OllamaLLM
 def test_ollama_cloud_request(monkeypatch):
     seen = {}
 
-    def fake_post(url, json=None, headers=None, timeout=None):
+    def fake_post(url, json=None, headers=None, timeout=None, proxy=None):
         seen.update(url=url, body=json, headers=headers)
         return httpx.Response(200, json={"message": {"role": "assistant", "content": '{"a": 1}'}})
 
