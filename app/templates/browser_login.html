@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card"><h2>ورود به {{ acc.label }} <span class="muted">({{ acc.kind }})</span></h2>
+<p class="muted">این تصویرِ زنده‌ی مرورگرِ روی سرور است. روی هر جای تصویر بزنی، همان‌جا کلیک می‌شود. برای نوشتن، اول روی کادر داخل تصویر بزن، بعد متن را در کادر پایین بنویس و «ارسال متن» را بزن. وقتی وارد اکانت شدی و صفحه‌ی اصلی را دیدی، «تمام شد» را بزن.</p>
+
+<div class="bar">
+  <input id="url" class="ltr" placeholder="آدرس" autocomplete="off">
+  <button type="button" class="sec" data-act="goto">برو</button>
+  <button type="button" class="sec" data-act="back">بازگشت</button>
+  <button type="button" class="sec" data-act="reload">بارگذاری دوباره</button>
+</div>
+
+<div id="wrap"><img id="screen" alt="در حال بارگذاری مرورگر..." width="{{ viewport.width }}" height="{{ viewport.height }}"></div>
+<p id="status" class="muted" style="min-height:1.6em"></p>
+
+<div class="bar">
+  <input id="text" class="ltr" placeholder="متن، ایمیل، رمز یا کد تأیید" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button type="button" id="send">ارسال متن</button>
+  <button type="button" class="sec" data-key="Enter">Enter</button>
+  <button type="button" class="sec" data-key="Backspace">⌫ پاک</button>
+  <button type="button" class="sec" data-key="Tab">Tab</button>
+  <button type="button" class="sec" data-scroll="-500">▲ بالا</button>
+  <button type="button" class="sec" data-scroll="500">▼ پایین</button>
+</div>
+
+<div class="bar" style="margin-top:14px">
+  <form method="post" action="/accounts/{{ acc.id }}/login/finish"><button>تمام شد، ورود ذخیره شود</button></form>
+  <form method="post" action="/accounts/{{ acc.id }}/login/cancel"><button class="sec">لغو</button></form>
+</div>
+<p class="muted" style="font-size:12px">رمزت ذخیره نمی‌شود؛ فقط کوکی‌های ورود (رمزنگاری‌شده) نگه داشته می‌شوند. اگر ۱۵ دقیقه کاری نکنی، این پنجره بسته می‌شود.</p>
+</div>
+
+<style>
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}.bar input{flex:1;min-width:180px}.bar form{display:inline}
+#wrap{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;line-height:0}
+#screen{width:100%;height:auto;cursor:crosshair;display:block}
+</style>
+<script>
+const ID = {{ acc.id }}, W = {{ viewport.width }}, H = {{ viewport.height }};
+const img = document.getElementById('screen'), status = document.getElementById('status');
+let busy = false, stopped = false;
+
+function refresh(){
+  if (stopped) return;
+  if (document.hidden) { setTimeout(refresh, 1000); return; }
+  img.src = `/accounts/${ID}/login/shot?t=${Date.now()}`;
+}
+img.onload = () => setTimeout(refresh, 900);
+img.onerror = () => { stopped = true; status.textContent = 'پنجره‌ی ورود بسته شده. دوباره از صفحه‌ی اکانت‌ها «ورود با مرورگر» را بزن.'; };
+refresh();
+
+async function act(body){
+  if (busy) return; busy = true; status.textContent = '...';
+  try {
+    const r = await (await fetch(`/accounts/${ID}/login/act`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).json();
+    status.textContent = r.ok ? r.url : 'خطا: ' + r.error;
+    if (r.ok) document.getElementById('url').value = r.url;
+  } catch (e) { status.textContent = 'خطا: ' + e; }
+  busy = false;
+}
+
+img.addEventListener('click', e => {
+  const rect = img.getBoundingClientRect();
+  act({action: 'click', x: (e.clientX - rect.left) * W / rect.width, y: (e.clientY - rect.top) * H / rect.height});
+});
+document.getElementById('send').addEventListener('click', () => {
+  const t = document.getElementById('text'); act({action: 'type', text: t.value}); t.value = '';
+});
+document.getElementById('text').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('send').click(); }
+});
+document.querySelectorAll('[data-key]').forEach(b => b.addEventListener('click', () => act({action: 'key', key: b.dataset.key})));
+document.querySelectorAll('[data-scroll]').forEach(b => b.addEventListener('click', () => act({action: 'scroll', dy: +b.dataset.scroll})));
+document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
+  act(b.dataset.act === 'goto' ? {action: 'goto', url: document.getElementById('url').value} : {action: b.dataset.act});
+}));
+</script>
+{% endblock %}

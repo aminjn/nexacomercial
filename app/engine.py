@@ -101,7 +101,7 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
     stage = "setup"  # setup → ai (writing) → publish (platform API); only publish errors count against the account
     try:
         creds = account.creds
-        pub = make(account.kind, creds)
+        pub = make(account.kind, {**creds, "_account_id": account.id})
         stage = "ai"
         llm = get_llm()
         if pub.category == "article":
@@ -113,7 +113,7 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             stage = "publish"
             res = None if dry else pub.publish_article(art)
         else:
-            post = generate_social(llm, site, account.kind, max_chars=min(pub.max_chars or 240, 240), extra=extra)
+            post = generate_social(llm, site, account.kind.removesuffix("_web"), max_chars=min(pub.max_chars or 240, 240), extra=extra)
             rec.title, rec.link_url = post.text[:120], post.link_url
             rec.body_preview = post.render()[:600]
             if pub.needs_image and not (post.image_url or creds.get("image_url")):

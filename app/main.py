@@ -9,16 +9,16 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from . import engine, importer, runtime, scheduler, v2ray
+from . import browser, engine, importer, runtime, scheduler, v2ray
 from . import models as m
 from .config import settings
-from .publishers import REGISTRY
+from .publishers import REGISTRY, make
 from .publishers.fields import KIND_FIELDS, KIND_GUIDES, field_names, is_secret, masked, missing_fields
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -348,7 +348,8 @@ def accounts_page(request: Request, tag: str = "", kind: str = "", edit: int = 0
         accounts = s.exec(q).all()
         tags = sorted({a.tag for a in s.exec(select(m.Account)).all() if a.tag})
         sites = s.exec(select(m.Site)).all()
-    rows = [{"a": a, "creds": masked(a.creds)} for a in accounts]
+    rows = [{"a": a, "creds": masked(a.creds), "web": a.kind.endswith("_web"), "session": browser.has_session(a.id)}
+            for a in accounts]
     kinds = {k: {"category": REGISTRY[k].category, "fields": KIND_FIELDS.get(k, []), "guide": KIND_GUIDES.get(k, {})}
              for k in sorted(REGISTRY)}
     current = _get(m.Account, edit) if edit else None
@@ -386,6 +387,66 @@ async def account_save(request: Request):
     return back("/accounts", "ذخیره شد")
 
 
+# ---------------------------------------------------------------- log in as a user (live browser view)
+
+
+def _web_account(account_id: int) -> m.Account:
+    acc = _get(m.Account, account_id)
+    if not acc.kind.endswith("_web"):
+        raise HTTPException(400, "not a browser account")
+    return acc
+
+
+@app.get("/accounts/{account_id}/login", response_class=HTMLResponse, dependencies=protected)
+def account_login_page(request: Request, account_id: int, restart: int = 0):
+    acc = _web_account(account_id)
+    if restart or not browser.login_active(acc.id):
+        try:
+            browser.login_start(acc.id, make(acc.kind, {**acc.creds, "_account_id": acc.id}).login_url)
+        except Exception as e:  # noqa: BLE001
+            return back("/accounts", f"مرورگر باز نشد: {e}")
+    return render(request, "browser_login.html", acc=acc, viewport=browser.VIEWPORT)
+
+
+@app.get("/accounts/{account_id}/login/shot", dependencies=protected)
+def account_login_shot(account_id: int):
+    try:
+        img = browser.login_shot(account_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(410, str(e)) from e
+    return Response(img, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/accounts/{account_id}/login/act", dependencies=protected)
+async def account_login_act(account_id: int, request: Request):
+    action = await request.json()
+    try:
+        return {"ok": True, "url": browser.login_act(account_id, action)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e).splitlines()[0][:300]}
+
+
+@app.post("/accounts/{account_id}/login/finish", dependencies=protected)
+def account_login_finish(account_id: int):
+    try:
+        browser.login_finish(account_id)
+    except Exception as e:  # noqa: BLE001
+        return back(f"/accounts/{account_id}/login", f"ذخیره نشد: {e}")
+    with m.session() as s:
+        acc = s.get(m.Account, account_id)
+        if acc:
+            acc.status, acc.fail_count, acc.last_error = "ok", 0, ""
+            s.add(acc)
+            s.commit()
+    return back("/accounts", "ورود ذخیره شد ✓ حالا «تست» را بزن")
+
+
+@app.post("/accounts/{account_id}/login/cancel", dependencies=protected)
+def account_login_cancel(account_id: int):
+    browser.login_cancel(account_id)
+    return back("/accounts", "پنجره‌ی ورود بسته شد")
+
+
 @app.post("/accounts/import", dependencies=protected)
 async def accounts_import(request: Request):
     f = await request.form()
@@ -408,6 +469,7 @@ async def account_action(account_id: int, action: str, request: Request):
             raise HTTPException(404)
         if action == "delete":
             s.delete(acc)
+            browser.forget(account_id)
         elif action == "toggle":
             acc.enabled = not acc.enabled
         elif action == "resume":

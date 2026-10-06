@@ -1,5 +1,15 @@
 FROM python:3.11-slim
 WORKDIR /srv
+# Chromium for "log in as a user" accounts (<platform>_web). Optional Debian mirror for servers in Iran:
+#   docker compose build --build-arg APT_MIRROR=https://mirror.arvancloud.ir
+# If it fails the build still succeeds; only the browser accounts won't work.
+ARG APT_MIRROR=
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|http://deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true; fi; \
+    (apt-get update -o Acquire::Retries=3 \
+     && apt-get install -y --no-install-recommends chromium fonts-noto-core fonts-noto-color-emoji \
+     && rm -rf /var/lib/apt/lists/*) \
+    || echo "!! chromium install failed — browser accounts (*_web) will not work until it is installed"
 COPY requirements.txt .
 # Optional PyPI mirror:  docker compose build --build-arg PIP_INDEX_URL=https://...
 ARG PIP_INDEX_URL=https://pypi.org/simple

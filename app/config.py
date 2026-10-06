@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     v2ray_socks_port: int = 10808
     xray_bin: str = ""  # empty = <data_dir>/xray/xray or `xray` on PATH
     xray_download_url: str = ""  # empty = latest release from GitHub
+    # Chromium for "<platform>_web" accounts (log in as a user). Empty = `chromium` on PATH.
+    chromium_path: str = ""
 
     # HTTP timeouts for publishers.
     http_timeout_sec: float = 60.0

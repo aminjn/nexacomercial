@@ -24,4 +24,5 @@ def make(kind: str, options: dict[str, Any]) -> Publisher:
 from . import (  # noqa: E402,F401
     articles,
     socials,
+    web,
 )

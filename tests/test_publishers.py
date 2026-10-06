@@ -61,6 +61,35 @@ def test_wordpress_selfhosted(monkeypatch):
     assert res.url == "https://blog.test/t" and res.external_id == "7"
 
 
+def test_wordpress_login_password_xmlrpc(monkeypatch):
+    import xmlrpc.client
+    calls = []
+
+    def handler(req):
+        params, method = xmlrpc.client.loads(req.content)
+        calls.append(method)
+        assert req.url.path == "/xmlrpc.php" and params[1:3] == ("u", "pw")
+        if method == "wp.newPost":
+            assert params[3]["post_title"] == "T" and "example.com" in params[3]["post_content"]
+            return httpx.Response(200, content=xmlrpc.client.dumps(("42",), methodresponse=True).encode())
+        return httpx.Response(200, content=xmlrpc.client.dumps(({"link": "https://blog.test/t"},), methodresponse=True).encode())
+    monkeypatch.setattr(Publisher, "http", _mock(handler))
+    res = make("wordpress", {"base_url": "https://blog.test", "username": "u", "password": "pw"}).publish_article(ART)
+    assert (res.url, res.external_id, calls) == ("https://blog.test/t", "42", ["wp.newPost", "wp.getPost"])
+
+
+def test_writeas_login_password(monkeypatch):
+    def handler(req):
+        if req.url.path == "/api/auth/login":
+            assert json.loads(req.content) == {"alias": "blog", "pass": "pw"}
+            return httpx.Response(200, json={"data": {"access_token": "TOK"}})
+        assert req.headers["Authorization"] == "Token TOK"
+        return httpx.Response(201, json={"data": {"id": "x1", "slug": "t"}})
+    monkeypatch.setattr(Publisher, "http", _mock(handler))
+    res = make("writeas", {"collection": "blog", "password": "pw"}).publish_article(ART)
+    assert res.url == "https://write.as/blog/t"
+
+
 def test_telegram_social(monkeypatch):
     def handler(req):
         body = json.loads(req.content)

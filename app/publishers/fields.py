@@ -3,8 +3,9 @@
 KIND_FIELDS: kind -> [(name, required, label, help)]   — `help` says exactly where the value comes from.
 KIND_GUIDES: kind -> {"summary", "steps", "links", "notes"} — shown above the fields when the kind is chosen.
 
-Every platform is used through its official API with your own account's token; there is no
-username/password scraping, captcha solving or browser automation.
+Regular kinds use the platform's official API with your own token. "<platform>_web" kinds instead
+publish as a logged-in user through a headless browser: you log in yourself once from the dashboard
+(live view of the browser), no password is stored and no captcha is solved automatically.
 """
 from __future__ import annotations
 
@@ -22,6 +23,9 @@ KIND_FIELDS: dict[str, list[F]] = {
     "wordpress": [
         ("base_url", False, "آدرس وبلاگ وردپرسی", "برای وردپرس روی هاست خودت: آدرس کامل وبلاگ، مثل https://blog.example.com"),
         ("username", False, "نام کاربری وردپرس", "همان نام کاربری که با آن وارد wp-admin می‌شوی (نه ایمیل)."),
+        ("password", False, "رمز ورود وردپرس",
+         "ساده‌ترین راه برای وردپرس روی هاست خودت: همان رمزی که با آن وارد wp-admin می‌شوی (از xmlrpc.php استفاده می‌شود). "
+         "اگر Application Password بگذاری، آن ترجیح داده می‌شود."),
         ("app_password", False, "Application Password",
          "wp-admin ← کاربران ← نمایه‌ی شما ← پایین صفحه «Application Passwords» ← یک نام بنویس ← "
          "«Add New Application Password» ← رمز ۲۴ حرفی را کپی کن (فاصله‌ها مشکلی ندارند). رمز اصلی وردپرس را نگذار."),
@@ -60,7 +64,9 @@ KIND_FIELDS: dict[str, list[F]] = {
     ],
     "writeas": [
         ("collection", True, "نام وبلاگ (alias)", "اگر آدرس وبلاگت write.as/myblog است، بنویس myblog"),
-        ("token", True, "Access Token", "با دستور مرحله‌ی ۲ بالا گرفته می‌شود (مقدار access_token در جواب)."),
+        ("username", False, "نام کاربری Write.as", "خالی = همان نام وبلاگ."),
+        ("password", False, "رمز Write.as", "ساده‌ترین راه: رمز ورود خودت؛ هر بار خودش وارد می‌شود."),
+        ("token", False, "Access Token", "به‌جای رمز: با دستور مرحله‌ی ۲ بالا گرفته می‌شود (مقدار access_token در جواب)."),
     ],
     # ------------------------------------------------------------------ social networks
     "telegram": [
@@ -98,7 +104,7 @@ KIND_FIELDS: dict[str, list[F]] = {
     ],
     "bluesky": [
         ("handle", True, "هندل", "نام کاربری کامل بدون @، مثل myname.bsky.social"),
-        ("app_password", True, "App Password", "Bluesky ← Settings ← Privacy and security ← App passwords ← Add App Password ← رمزی شبیه xxxx-xxxx-xxxx-xxxx. رمز اصلی را نگذار."),
+        ("app_password", True, "رمز (App Password یا رمز اصلی)", "پیشنهادی: Bluesky ← Settings ← Privacy and security ← App passwords ← Add App Password ← رمزی شبیه xxxx-xxxx-xxxx-xxxx. رمز اصلی اکانت هم کار می‌کند ولی امن‌تر نیست."),
     ],
     "reddit": [
         ("client_id", True, "Client ID", "reddit.com/prefs/apps ← create another app ← نوع script ← بعد از ساخت، رشته‌ی زیر «personal use script»."),
@@ -310,6 +316,40 @@ KIND_GUIDES: dict[str, dict[str, Any]] = {
         "links": [],
     },
 }
+
+# ---------------------------------------------------------------- log in as a user (browser)
+
+_HANDLE: F = ("handle", False, "نام کاربری", "اختیاری؛ فقط برای این‌که در لیست بدانی کدام اکانت است. رمز لازم نیست.")
+WEB_FIELDS: dict[str, list[F]] = {
+    "x_web": [_HANDLE],
+    "linkedin_web": [_HANDLE],
+    "facebook_web": [_HANDLE, ("page_url", False, "آدرس صفحه",
+                               "خالی = روی پروفایل خودت پست می‌گذارد. برای صفحه‌ای که مدیرش هستی آدرس کاملش را بده، "
+                               "مثل https://www.facebook.com/mypage (اول در فیسبوک به آن صفحه سوییچ کرده باش).")],
+    "instagram_web": [_HANDLE, ("image_url", False, "تصویر", "خالی بگذار؛ تصویری که برای سایت انتخاب کرده‌ای استفاده می‌شود.")],
+    "threads_web": [_HANDLE],
+    "pinterest_web": [_HANDLE, ("board", True, "اسم برد", "اسم دقیق یکی از بردهایت در پینترست، همان‌طور که در پروفایلت نوشته شده.")],
+    "reddit_web": [_HANDLE, ("subreddit", True, "ساب‌ردیت", "بدون r/؛ جایی که قوانینش لینک گذاشتن را مجاز می‌داند.")],
+    "mastodon_web": [_HANDLE, ("instance", True, "آدرس سرور ماستودون", "مثل https://mastodon.social")],
+    "telegram_web": [_HANDLE, ("channel", True, "کانال یا گروه", "یوزرنیم کانال، مثل @mychannel — خودت باید ادمینش باشی.")],
+    "medium_web": [_HANDLE],
+    "tumblr_web": [_HANDLE, ("blog", False, "اسم وبلاگ", "اختیاری؛ اگر چند وبلاگ داری، اسم همانی که باید در آن پست شود.")],
+    "devto_web": [_HANDLE],
+}
+WEB_LOGIN_STEPS = [
+    "همین فرم را ذخیره کن (رمز و توکن لازم نیست).",
+    "در لیست اکانت‌ها روی دکمه‌ی «ورود با مرورگر» این اکانت بزن؛ یک مرورگر واقعی روی سرور (پشت v2ray) باز می‌شود و تصویرش را می‌بینی.",
+    "مثل همیشه وارد شو: روی کادر کلیک کن، متن را در کادر زیر تصویر بنویس و «ارسال متن» را بزن. کد تأیید پیامکی یا ایمیلی را هم همین‌طور وارد کن.",
+    "وقتی صفحه‌ی اصلی اکانتت را دیدی، «تمام شد، ورود ذخیره شود» را بزن. از این به بعد پست‌ها با همین ورود گذاشته می‌شوند.",
+    "یک «تست» بزن. اگر بعداً سایت از اکانت خارجت کرد، همین مراحل را تکرار کن.",
+]
+WEB_NOTE = ("این روش رسمی نیست: سایت‌ها ورود و پست خودکار را دوست ندارند و ممکن است تأیید هویت بخواهند یا اکانت را "
+            "موقتاً قفل کنند. اول با یک اکانت غیرمهم امتحان کن، فاصله‌ی بین پست‌ها را زیاد بگذار و زبان اکانت را "
+            "انگلیسی کن تا دکمه‌ها پیدا شوند. اگر ظاهر سایت عوض شود، ممکن است این روش تا آپدیت بعدی کار نکند.")
+KIND_FIELDS.update(WEB_FIELDS)
+for _k in WEB_FIELDS:
+    KIND_GUIDES[_k] = {"summary": "ورود با نام کاربری و رمز خودت، بدون API و توکن.", "steps": WEB_LOGIN_STEPS,
+                       "links": [], "notes": WEB_NOTE}
 
 SECRET_HINTS = ("token", "secret", "password", "key")
 

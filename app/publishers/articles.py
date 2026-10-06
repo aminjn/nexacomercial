@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import xmlrpc.client
 from html.parser import HTMLParser
 from typing import Any
 
@@ -122,12 +123,37 @@ class WordPress(Publisher):
             url = f"https://public-api.wordpress.com/wp/v2/sites/{self.opt('site', required=True)}/posts"
             with self.http(headers={"Authorization": f"Bearer {self.opt('token')}"}) as c:
                 d = self.check(c.post(url, json=body))
+        elif self.opt("password") and not self.opt("app_password"):
+            return self._xmlrpc(article, body)
         else:
             base = self.opt("base_url", required=True).rstrip("/")
             auth = (self.opt("username", required=True), self.opt("app_password", required=True))
             with self.http(auth=auth) as c:
                 d = self.check(c.post(f"{base}/wp-json/wp/v2/posts", json=body))
         return PublishResult(url=d.get("link", ""), external_id=str(d.get("id", "")), raw=d)
+
+    def _xmlrpc(self, article: Article, body: dict[str, Any]) -> PublishResult:
+        """Self-hosted WordPress with the normal login password (xmlrpc.php, enabled by default)."""
+        url = self.opt("base_url", required=True).rstrip("/") + "/xmlrpc.php"
+        user, pw = self.opt("username", required=True), self.opt("password")
+        content = {"post_type": "post", "post_status": body["status"], "post_title": article.title,
+                   "post_content": body["content"], "post_excerpt": article.excerpt}
+        if "categories" in body:
+            content["terms"] = {"category": body["categories"]}
+
+        def rpc(method: str, *params: Any) -> Any:
+            with self.http(headers={"Content-Type": "text/xml"}) as c:
+                r = c.post(url, content=xmlrpc.client.dumps(params, method).encode())
+            if r.status_code >= 400:
+                raise PublishError(f"xmlrpc HTTP {r.status_code}: {r.text[:300]}")
+            try:
+                return xmlrpc.client.loads(r.content)[0][0]
+            except xmlrpc.client.Fault as e:
+                raise PublishError(f"وردپرس: {e.faultString}") from e
+
+        post_id = rpc("wp.newPost", 1, user, pw, content)
+        link = rpc("wp.getPost", 1, user, pw, int(post_id), ["link"]).get("link", "")
+        return PublishResult(url=link, external_id=str(post_id))
 
 
 # ---------------------------------------------------------------- Blogger (Google)
@@ -277,7 +303,13 @@ class WriteAs(Publisher):
 
     def publish_article(self, article: Article) -> PublishResult:
         alias = self.opt("collection", required=True)
-        with self.http(headers={"Authorization": f"Token {self.opt('token', required=True)}"}) as c:
+        token = self.opt("token")
+        if not token:  # log in with the normal username / password
+            with self.http() as c:
+                d = self.check(c.post("https://write.as/api/auth/login", json={
+                    "alias": self.opt("username") or alias, "pass": self.opt("password", required=True)}))
+            token = d.get("data", {}).get("access_token", "")
+        with self.http(headers={"Authorization": f"Token {token}"}) as c:
             d = self.check(c.post(f"https://write.as/api/collections/{alias}/posts",
                                   json={"title": article.title, "body": article.body_markdown}))
         data = d.get("data", {})
