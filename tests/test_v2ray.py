@@ -87,3 +87,23 @@ def test_settings_page_v2ray(monkeypatch):
         assert not settings.v2ray_enabled and settings.v2ray_link
         client.post("/settings", data={"llm_provider": "fake", "clear_v2ray_link": "1"})
         assert settings.v2ray_link == ""
+
+
+def test_upload_xray(monkeypatch, tmp_path):
+    import io
+    import zipfile
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    monkeypatch.setattr(v2ray, "local_dir", lambda: str(tmp_path))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("xray", b"\x7fELF-fake")
+        z.writestr("geoip.dat", b"geo")
+    with TestClient(app) as client:
+        r = client.post("/v2ray-upload", files={"file": ("Xray-linux-64.zip", buf.getvalue())})
+        assert "Xray نصب شد" in r.text
+        assert (tmp_path / "xray").read_bytes() == b"\x7fELF-fake" and (tmp_path / "geoip.dat").exists()
+        r = client.post("/v2ray-upload", files={"file": ("x.zip", b"junk")})
+        assert "نامعتبر" in r.text

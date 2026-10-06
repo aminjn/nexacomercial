@@ -90,8 +90,17 @@
 <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
 <form method="post" action="/llm-test?next=/settings"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
 <form method="post" action="/v2ray-test"><button class="sec">تست اتصال v2ray</button></form>
-<form method="post" action="/v2ray-install"><button class="sec">{{ 'به‌روزرسانی Xray' if v2.binary else 'نصب Xray' }}</button></form>
+<form method="post" action="/v2ray-install"><button class="sec">{{ 'به‌روزرسانی Xray' if v2.binary else 'نصب Xray' }} (دانلود از گیت‌هاب)</button></form>
 </div>
+<details class="guide" style="margin-top:10px" {{ 'open' if not v2.binary }}><summary>دانلود Xray از سرور نمی‌شود؟ فایل را خودت آپلود کن</summary>
+  <ol>
+    <li>روی کامپیوتر خودت (با فیلترشکن) این فایل را دانلود کن: <a class="ltr" href="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip">Xray-linux-64.zip</a> (حدود ۱۲ مگابایت)</li>
+    <li>همان فایل zip را بدون باز کردن این‌جا انتخاب و آپلود کن:</li>
+  </ol>
+  <form method="post" action="/v2ray-upload" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="file" name="file" accept=".zip" style="width:auto" required><button class="sec">آپلود و نصب Xray</button>
+  </form>
+</details>
 
 <style>
 .help{display:block;color:var(--muted);font-size:12px;margin-top:3px;line-height:1.7}

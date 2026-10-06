@@ -8,6 +8,7 @@ import io
 import os
 import platform
 import sys
+import time
 import urllib.request
 import zipfile
 
@@ -21,21 +22,39 @@ def default_url() -> str:
     return f"{RELEASES}/Xray-linux-{arch}.zip"
 
 
-def install(dest: str, url: str = "", proxy: str = "", timeout: float = 120) -> str:
-    """Download the release zip and extract xray (+ geoip/geosite) into `dest`. Returns the binary path."""
-    url = url or default_url()
-    handlers = [urllib.request.ProxyHandler({"http": proxy, "https": proxy})] if proxy else []
-    with urllib.request.build_opener(*handlers).open(url, timeout=timeout) as r:
-        data = r.read()
+def extract(data: bytes, dest: str) -> str:
+    """Put xray (+ geoip/geosite) from a release zip — or a bare xray binary — into `dest`."""
     os.makedirs(dest, exist_ok=True)
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        for name in ("xray", "geoip.dat", "geosite.dat"):
-            if name in z.namelist():
-                with open(os.path.join(dest, name), "wb") as f:
-                    f.write(z.read(name))
     path = os.path.join(dest, "xray")
+    if data.startswith(b"\x7fELF"):
+        files = {"xray": data}
+    else:
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                files = {n: z.read(n) for n in ("xray", "geoip.dat", "geosite.dat") if n in z.namelist()}
+        except zipfile.BadZipFile as e:
+            raise ValueError("not a zip file or an xray binary") from e
+        if "xray" not in files:
+            raise ValueError("no xray binary inside the zip (use Xray-linux-64.zip)")
+    for name, content in files.items():
+        with open(os.path.join(dest, name), "wb") as f:
+            f.write(content)
     os.chmod(path, 0o755)
     return path
+
+
+def install(dest: str, url: str = "", proxy: str = "", timeout: float = 90) -> str:
+    """Download the release zip into `dest`. Gives up after `timeout` seconds in total (slow links in Iran)."""
+    url = url or default_url()
+    handlers = [urllib.request.ProxyHandler({"http": proxy, "https": proxy})] if proxy else []
+    deadline = time.monotonic() + timeout
+    buf = io.BytesIO()
+    with urllib.request.build_opener(*handlers).open(url, timeout=20) as r:
+        while chunk := r.read1(64 * 1024):
+            buf.write(chunk)
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"download too slow ({buf.tell() // 1024} KB in {int(timeout)} s)")
+    return extract(buf.getvalue(), dest)
 
 
 if __name__ == "__main__":

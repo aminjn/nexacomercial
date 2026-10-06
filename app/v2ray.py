@@ -196,6 +196,11 @@ def install_binary(url: str = "") -> str:
     return xray_get.install(local_dir(), url or settings.xray_download_url, proxy=settings.publish_proxy)
 
 
+def install_upload(data: bytes) -> str:
+    """Xray release zip (or the bare binary) uploaded from the dashboard."""
+    return xray_get.extract(data, local_dir())
+
+
 def running() -> bool:
     return _proc is not None and _proc.poll() is None
 

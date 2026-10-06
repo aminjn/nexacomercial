@@ -195,6 +195,20 @@ def v2ray_install():
     return back("/settings", f"Xray نصب شد ({path})" + (f" — ولی اجرا نشد: {err}" if err else ""))
 
 
+@app.post("/v2ray-upload", dependencies=protected)
+async def v2ray_upload(request: Request):
+    upload = (await request.form()).get("file")
+    data = await upload.read() if upload is not None and not isinstance(upload, str) else b""
+    if not data:
+        return back("/settings", "فایلی انتخاب نشد")
+    try:
+        path = v2ray.install_upload(data)
+    except (ValueError, OSError) as e:
+        return back("/settings", f"فایل Xray نامعتبر است: {e}")
+    err = v2ray.sync()
+    return back("/settings", f"Xray نصب شد ({path})" + (f" — ولی اجرا نشد: {err}" if err else ""))
+
+
 @app.get("/settings/models", dependencies=protected)
 def settings_models(provider: str, base_url: str, api_key: str = ""):
     from .llm import list_models
