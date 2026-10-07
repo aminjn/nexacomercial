@@ -132,7 +132,8 @@ def _get_browser() -> Any:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as e:
-        raise BrowserError("Playwright نصب نیست (pip install playwright)") from e
+        raise BrowserError("مرورگر روی سرور نصب نیست. روی سرور بزن: "
+                           "INSTALL_BROWSER=1 APT_MIRROR=https://mirror.arvancloud.ir docker compose up -d --build") from e
     if _pw is None:
         _pw = sync_playwright().start()
     try:
