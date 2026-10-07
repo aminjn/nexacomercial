@@ -140,7 +140,10 @@ def _get_browser() -> Any:
             executable_path=chromium_path(), headless=True, proxy=proxy,
             args=["--no-sandbox", "--disable-dev-shm-usage", "--lang=en-US"])
     except Exception as e:  # noqa: BLE001
-        raise BrowserError(f"مرورگر Chromium اجرا نشد: {e}") from e
+        if chromium_path() is None and "Executable doesn't exist" in str(e):
+            raise BrowserError("مرورگر Chromium روی سرور نصب نیست. روی سرور بزن: "
+                               "INSTALL_BROWSER=1 APT_MIRROR=https://mirror.arvancloud.ir docker compose up -d --build") from e
+        raise BrowserError(f"مرورگر Chromium اجرا نشد: {str(e).splitlines()[0][:300]}") from e
     _browser_proxy = key
     return _browser
 

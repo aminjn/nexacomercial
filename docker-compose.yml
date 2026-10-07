@@ -5,6 +5,7 @@ services:
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         XRAY_URL: ${XRAY_URL:-}
+        INSTALL_BROWSER: ${INSTALL_BROWSER:-0}
         APT_MIRROR: ${APT_MIRROR:-}
     shm_size: "512mb"  # Chromium for browser accounts
     container_name: nexa-backlink

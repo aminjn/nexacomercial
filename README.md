@@ -101,7 +101,8 @@ Xray هنگام build از گیت‌هاب دانلود می‌شود؛ اگر �
 ذخیره می‌شوند و پست‌ها با همان ورود گذاشته می‌شوند. رمزت ذخیره نمی‌شود.
 این روش رسمی نیست؛ سایت‌ها ممکن است تأیید هویت بخواهند یا اکانت را قفل کنند، و با تغییر ظاهر سایت ممکن است
 لازم به آپدیت شود. وقتی یک انتشار خطا بدهد، عکس صفحه در `data/sessions/<id>-error.jpg` ذخیره می‌شود.
-Chromium هنگام build از مخازن Debian نصب می‌شود؛ اگر از ایران کند بود: `APT_MIRROR=https://mirror.arvancloud.ir docker compose build`.
+Chromium به‌طور پیش‌فرض نصب نمی‌شود (چند صد مگابایت است). یک بار این را بزن:
+`INSTALL_BROWSER=1 APT_MIRROR=https://mirror.arvancloud.ir docker compose up -d --build` — بعد از آن در cache می‌ماند.
 وردپرس روی هاست خودت و Write.as هم حالا با رمز معمولی کار می‌کنند. برای Blogger و Hashnode همان روش API مانده است.
 
 ### به‌جای Ollama
