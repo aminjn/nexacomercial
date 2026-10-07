@@ -17,4 +17,7 @@ services:
       APP_DATA_DIR: /data
     volumes:
       - ./data:/data
+      # code is read straight from the checkout: `git pull && docker compose up -d` updates the app
+      # without rebuilding the image (no pip / apt downloads, which are slow or blocked from Iran)
+      - ./app:/srv/app:ro
 

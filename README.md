@@ -83,7 +83,7 @@ docker compose exec nexa python -m app.cli llm-test
 ### بعد از نصب
 - پورت `8020` را در فایروال آروان باز کن، ترجیحاً فقط برای آی‌پی خودت.
 - بکاپ: پوشه‌ی `data/` و فایل `.env`. کلید `APP_SECRET_KEY` اطلاعات اکانت‌ها را رمز می‌کند؛ اگر گم شود، اکانت‌ها قابل بازخوانی نیستند.
-- آپدیت: `git pull && docker compose up -d --build`
+- آپدیت: `git pull && docker compose up -d` (کد مستقیم از پوشه‌ی app خوانده می‌شود و build لازم نیست؛ `--build` فقط وقتی requirements.txt یا Dockerfile عوض شده)
 - لاگ: `docker compose logs -f nexa`
 
 ### v2ray برای انتشار (سرور ایران)
