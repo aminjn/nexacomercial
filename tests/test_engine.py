@@ -492,7 +492,10 @@ def test_site_pages_with_keywords_and_merge():
                                 link_url="https://melkjet.com/search?type=rent&utm_source=telegram&utm_medium=social"))
             s.add(m.MediaPost(site_id=rent.id, image_url="https://x/media/a.jpg"))
             s.commit()
-        assert '"keywords": ["جستجوی هوشمند", "جستجوی ملک"]' in client.get(f"/sites?edit={main.id}").text
+        import json as _json
+        html = client.get(f"/sites?edit={main.id}").text
+        pages = _json.loads(html.split("const PAGES = ", 1)[1].split(";\n", 1)[0])  # what the page's JS receives
+        assert pages[0] == {"url": "https://melkjet.com/search", "keywords": ["جستجوی هوشمند", "جستجوی ملک"]}
         r = client.post(f"/sites/{rent.id}/merge", data={"target_id": main.id})
         assert "ادغام شد" in r.text
         page = client.get(f"/sites/{main.id}").text
