@@ -1,0 +1,15 @@
+# Adds Chromium + Playwright on top of the image that is already running, so nothing else is
+# downloaded again (no full rebuild). Usage on the server:
+#   docker build -f Dockerfile.browser -t nexacomercial-nexa \
+#     --build-arg APT_MIRROR=https://mirror.arvancloud.ir \
+#     --build-arg PIP_INDEX_URL=https://mirror-pypi.runflare.com/simple .
+#   docker compose up -d --force-recreate
+FROM nexacomercial-nexa:latest
+ARG APT_MIRROR=
+ARG PIP_INDEX_URL=https://pypi.org/simple
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|http://deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true; fi; \
+    apt-get update -o Acquire::Retries=3 \
+    && apt-get install -y --no-install-recommends chromium fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir --default-timeout=120 --retries 10 --index-url "$PIP_INDEX_URL" "playwright>=1.45"
