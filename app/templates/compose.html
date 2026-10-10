@@ -33,6 +33,7 @@
 {% endif %}
 <style>
 .step{margin:14px 0}.step > b{display:block;margin-bottom:6px}
+#link_url{max-width:100%;text-overflow:ellipsis}
 .drop{display:flex;align-items:center;justify-content:center;text-align:center;border:2px dashed var(--line);border-radius:10px;min-height:180px;cursor:pointer;background:var(--bg);overflow:hidden;padding:8px}
 .drop.over{border-color:var(--acc)}.drop img{max-width:100%;max-height:220px;object-fit:contain;background:#fff;border-radius:6px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -42,7 +43,7 @@ const PAGES = {{ site_pages|tojson }};
 const siteSel = document.getElementById('site_id'), linkSel = document.getElementById('link_url');
 function fillPages(){
   linkSel.length = 1;
-  for (const u of PAGES[siteSel.value] || []) { const o = document.createElement('option'); o.value = o.textContent = u; linkSel.appendChild(o); }
+  for (const p of PAGES[siteSel.value] || []) { const o = document.createElement('option'); o.value = p.url; o.textContent = p.label; o.title = p.url; linkSel.appendChild(o); }
 }
 if (siteSel) { siteSel.addEventListener('change', fillPages); fillPages(); }
 const drop = document.getElementById('drop'), file = document.getElementById('image_file');

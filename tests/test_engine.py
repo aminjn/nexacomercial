@@ -580,3 +580,13 @@ def test_compose_and_simple_campaign(monkeypatch):
         assert "انتشار خودکار" in r.text
         nav = client.get("/").text
         assert 'href="/compose"' in nav and 'href="/campaigns"' not in nav.split("</nav>")[0]
+
+
+def test_readable_page_names():
+    from app.main import page_label
+    site = m.Site(name="ملکجت", url="https://melkjet.com/", pages=[
+        {"url": "https://melkjet.com/search?kind=%D8%A2%D9%BE%D8%A7%D8%B1%D8%AA%D9%85%D8%A7%D9%86", "keywords": ["خرید آپارتمان"]},
+        {"url": "https://melkjet.com/search?type=rent"}])
+    assert page_label("https://melkjet.com", site) == "صفحه‌ی اصلی"
+    assert page_label(site.pages[0]["url"], site) == "خرید آپارتمان — /search?kind=آپارتمان"
+    assert page_label("https://melkjet.com/search?type=rent", site) == "/search?type=rent"

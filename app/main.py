@@ -530,6 +530,23 @@ def _account_groups(s: Any) -> list[tuple[str, list[m.Account]]]:
     return sorted(groups.items())
 
 
+def page_label(url: str, site: m.Site | None = None) -> str:
+    """A readable name for a page of a site: its first keyword + the decoded address (no %D8%A2...)."""
+    from urllib.parse import unquote, urlsplit
+    if site and url.rstrip("/") == site.url.rstrip("/"):
+        return "صفحه‌ی اصلی"
+    u = urlsplit(url)
+    short = unquote(u.path + ("?" + u.query if u.query else "")) or "/"
+    if len(short) > 60:
+        short = short[:57] + "…"
+    page = next((p for p in (site.pages or []) if isinstance(p, dict) and p.get("url") == url), None) if site else None
+    name = (page.get("keywords") or [""])[0] if page else ""
+    return f"{name} — {short}" if name else short
+
+
+templates.env.globals["page_label"] = page_label
+
+
 @app.get("/compose", response_class=HTMLResponse, dependencies=protected)
 def compose_page(request: Request, site: int = 0):
     with m.session() as s:
@@ -537,7 +554,8 @@ def compose_page(request: Request, site: int = 0):
         groups = _account_groups(s)
     current = next((x for x in sites if x.id == site), sites[0] if sites else None)
     return render(request, "compose.html", sites=sites, current=current, groups=groups,
-                  site_pages={x.id: [x.url] + [p["url"] if isinstance(p, dict) else p for p in (x.pages or [])]
+                  site_pages={x.id: [{"url": u, "label": page_label(u, x)} for u in
+                                     [x.url] + [p["url"] if isinstance(p, dict) else p for p in (x.pages or [])]]
                               for x in sites})
 
 

@@ -34,7 +34,7 @@
 </div>
 <div class="card"><h2>به تفکیک صفحه‌ی سایت</h2>
 <table><tr><th>صفحه</th><th>انتشار</th><th>مقاله</th><th>بک‌لینک زنده</th><th>کلیک</th></tr>
-{% for url, r in by_page %}<tr><td class="ltr" style="font-size:12px;max-width:520px;word-break:break-all"><a href="{{ url }}" target="_blank" rel="noopener">{{ url|replace('https://', '') }}</a></td>
+{% for url, r in by_page %}<tr><td style="font-size:13px;max-width:520px;word-break:break-word"><a href="{{ url }}" target="_blank" rel="noopener" title="{{ url }}">{{ page_label(url, site) }}</a></td>
   <td>{{ r.pubs }}</td><td>{{ r.articles }}</td><td>{{ r.live or '—' }}</td><td><b>{{ r.clicks }}</b></td></tr>
 {% else %}<tr><td colspan="5" class="muted">هنوز انتشاری نیست.</td></tr>{% endfor %}</table>
 <p class="muted" style="font-size:12px">صفحه‌ها را در «ویرایش سایت» ← «صفحه‌های دیگر همین سایت» اضافه کن.</p></div>
