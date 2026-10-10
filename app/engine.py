@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 
 from . import models as m
 from .config import settings
-from .content import generate_article, generate_social
+from .content import SocialPost, generate_article, generate_social, pick_link
 from .linkcheck import check_backlink
 from .llm import get_llm
 from .publishers import PublishError, make
@@ -99,6 +99,7 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
     rec = m.Publication(campaign_id=campaign.id if campaign else None, site_id=site.id, account_id=account.id,
                         account_kind=account.kind, account_label=account.label, category=account.category)
     stage = "setup"  # setup → ai (writing) → publish (platform API); only publish errors count against the account
+    media = None
     try:
         creds = account.creds
         pub = make(account.kind, {**creds, "_account_id": account.id})
@@ -113,18 +114,35 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             stage = "publish"
             res = None if dry else pub.publish_article(art)
         else:
-            post = generate_social(llm, site, account.kind.removesuffix("_web"), max_chars=min(pub.max_chars or 240, 240), extra=extra)
+            with m.session() as s:
+                media = m.pick_media(s, site.id)  # ready image (+ caption) from the «پست‌ها» page
+            if media and media.caption.strip():
+                post = SocialPost(text=media.caption.strip(), link_url=media.link_url or pick_link(site)[0],
+                                  title=site.name, image_url=media.image_url, site_id=site.id)
+            else:
+                post = generate_social(llm, site, account.kind.removesuffix("_web"),
+                                       max_chars=min(pub.max_chars or 240, 240), extra=extra)
+                if media:
+                    post.image_url = media.image_url
+                    post.link_url = media.link_url or post.link_url
             rec.title, rec.link_url = post.text[:120], post.link_url
             rec.body_preview = post.render()[:600]
             if pub.needs_image and not (post.image_url or creds.get("image_url")):
                 stage = "setup"
-                raise PublishError(f"{account.kind} بدون تصویر پست نمی‌گذارد؛ در صفحه‌ی «سایت‌ها» برای این سایت تصویر انتخاب کن")
+                raise PublishError(f"{account.kind} بدون تصویر پست نمی‌گذارد؛ در صفحه‌ی «پست‌ها» برای این سایت یک پست با تصویر بساز")
             stage = "publish"
             res = None if dry else pub.publish_social(post)
         if dry:
             rec.status = "dry_run"
         else:
             rec.url, rec.external_id = res.url, res.external_id
+        if rec.category == "social" and media:
+            with m.session() as s:
+                row = s.get(m.MediaPost, media.id)
+                if row:
+                    row.used_count, row.last_used_at = row.used_count + 1, m.utcnow()
+                    s.add(row)
+                    s.commit()
     except Exception as e:  # noqa: BLE001 — record every failure, never crash the scheduler
         rec.status, rec.error = "error", explain_error(stage, account.kind, e)[:1000]
         log.exception("[site %s] %s stage failed for account %s", site.id, stage, account.id)

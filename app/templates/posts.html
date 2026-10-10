@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card"><h2>پست‌های آماده (عکس و کپشن)</h2>
+<p class="muted">برای هر سایت هر چند پست که می‌خواهی بساز. هر بار که قرار است در اینستاگرام، پینترست، X و ... پست گذاشته شود، پستی از همان سایت انتخاب می‌شود که کمتر از بقیه استفاده شده. اگر کپشن را خالی بگذاری، هوش مصنوعی متن را می‌نویسد و فقط عکس از این‌جا برداشته می‌شود.</p>
+<form method="get" class="grid" style="max-width:420px;margin-bottom:10px">
+  <select name="site"><option value="">همه‌ی سایت‌ها</option>{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if f_site == s.id }}>{{ s.name }}</option>{% endfor %}</select>
+  <button class="sec">فیلتر</button>
+</form>
+<table>
+  <tr><th>عکس</th><th>سایت</th><th>کپشن</th><th>لینک</th><th>دفعات استفاده</th><th>وضعیت</th><th></th></tr>
+  {% for p in posts %}
+  <tr><td><a href="{{ p.image_url }}" target="_blank"><img src="{{ p.image_url }}" alt="" style="width:72px;height:72px;object-fit:contain;background:#fff;border-radius:6px"></a></td>
+    <td>{{ names.get(p.site_id, '—') }}</td>
+    <td style="max-width:380px;white-space:pre-wrap;font-size:13px">{{ p.caption[:220] if p.caption else '' }}{% if not p.caption %}<span class="muted">هوش مصنوعی می‌نویسد</span>{% elif p.caption|length > 220 %}…{% endif %}</td>
+    <td class="ltr" style="font-size:12px">{% if p.link_url %}<a href="{{ p.link_url }}" target="_blank" rel="noopener">{{ p.link_url[:50] }}</a>{% else %}<span class="muted">خودکار</span>{% endif %}</td>
+    <td>{{ p.used_count }}{% if p.last_used_at %}<div class="muted" style="font-size:12px">{{ p.last_used_at|local }}</div>{% endif %}</td>
+    <td>{% if p.enabled %}<span class="ok">فعال</span>{% else %}<span class="muted">خاموش</span>{% endif %}</td>
+    <td style="white-space:nowrap"><a class="btn" href="/posts?edit={{ p.id }}#form">ویرایش</a>
+      <form class="inline" method="post" action="/posts/{{ p.id }}/toggle"><button class="sec">{{ 'خاموش' if p.enabled else 'روشن' }}</button></form>
+      <form class="inline" method="post" action="/posts/{{ p.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="danger">حذف</button></form></td></tr>
+  {% else %}<tr><td colspan="7" class="muted">هنوز پستی ساخته نشده.</td></tr>{% endfor %}
+</table></div>
+
+<div class="card" id="form"><h2>{{ 'ویرایش پست' if current else 'پست جدید' }}</h2>
+{% if not sites %}<p>اول در صفحه‌ی <a href="/sites">سایت‌ها</a> یک سایت اضافه کن.</p>{% else %}
+<form method="post" action="/posts" enctype="multipart/form-data">
+  {% if current %}<input type="hidden" name="id" value="{{ current.id }}">{% endif %}
+  <div class="grid">
+    <label><span>سایت *</span><select name="site_id" required>{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if (current and current.site_id == s.id) or (not current and f_site == s.id) }}>{{ s.name }}</option>{% endfor %}</select></label>
+    <label><span>عکس {{ '(خالی = همان قبلی)' if current else '*' }} — JPG، PNG، WEBP</span>
+      <input type="file" name="image_file" id="image_file" accept="image/jpeg,image/png,image/webp,image/gif" {{ '' if current else 'required' }}>
+      <img id="image_preview" src="{{ current.image_url if current }}" alt="" style="max-width:180px;max-height:180px;margin-top:6px;border-radius:6px;background:#fff;{{ '' if current else 'display:none' }}">
+      <small class="muted">عکس‌های پهن یا شفاف قبل از اینستاگرام وسط یک مربع سفید گذاشته می‌شوند تا بریده نشوند.</small></label>
+    <label><span>لینک (اختیاری)</span><input name="link_url" class="ltr" placeholder="https://melkjet.com/..." value="{{ current.link_url if current }}">
+      <small class="muted">خالی = یکی از صفحه‌های سایت خودکار انتخاب می‌شود. آخر متن اضافه می‌شود.</small></label>
+  </div>
+  <label><span>کپشن (اختیاری)</span><textarea name="caption" rows="6" placeholder="متن پست، با هشتگ‌ها. خالی = هوش مصنوعی برای هر انتشار متن تازه می‌نویسد.">{{ current.caption if current }}</textarea></label>
+  <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if not current or current.enabled }}> فعال</label>
+  <button>ذخیره</button> {% if current %}<a href="/posts">انصراف</a>{% endif %}
+</form>{% endif %}
+</div>
+<script>
+const fi = document.getElementById('image_file');
+if (fi) fi.addEventListener('change', e => {
+  const f = e.target.files[0], img = document.getElementById('image_preview');
+  if (f) { img.src = URL.createObjectURL(f); img.style.display = ''; }
+});
+</script>
+{% endblock %}

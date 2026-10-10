@@ -318,3 +318,33 @@ def test_account_form_hides_token_kinds_with_web_version():
             s.add(a)
             s.commit()
         assert 'value="instagram"' in client.get("/accounts").text  # still editable when in use
+
+
+def test_ready_posts_rotate_with_own_caption_and_image():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    site = add_site()
+    acc = m.Account(label="ig", kind="instagram_web", category="social")
+    with m.session() as s:
+        s.add(acc)
+        s.commit()
+        s.refresh(acc)
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+    with TestClient(app) as client:
+        assert client.get("/posts").status_code == 200
+        r = client.post("/posts", data={"site_id": site.id, "caption": "کپشن خودم #ملکجت",
+                                        "link_url": "https://example.com/rent", "enabled": "1"},
+                        files={"image_file": ("a.png", png, "image/png")})
+        assert "ذخیره شد" in r.text
+        client.post("/posts", data={"site_id": site.id, "enabled": "1"}, files={"image_file": ("b.png", png, "image/png")})
+        assert "هوش مصنوعی می‌نویسد" in client.get(f"/posts?site={site.id}").text
+    with m.session() as s:
+        own, ai = sorted(s.exec(m.select(m.MediaPost)).all(), key=lambda p: p.id)
+    first = engine.publish(site, acc, dry_run=True)
+    second = engine.publish(site, acc, dry_run=True)
+    assert first.status == second.status == "dry_run"
+    assert "کپشن خودم #ملکجت" in first.body_preview and first.link_url == "https://example.com/rent"
+    assert "کپشن خودم" not in second.body_preview  # second ready post: AI text, its own image
+    with m.session() as s:
+        assert [p.used_count for p in sorted(s.exec(m.select(m.MediaPost)).all(), key=lambda p: p.id)] == [1, 1]

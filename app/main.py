@@ -331,9 +331,75 @@ def site_delete(site_id: int):
     with m.session() as s:
         if s.exec(select(m.Campaign).where(m.Campaign.site_id == site_id)).first():
             return back("/sites", "اول کمپین‌های این سایت را حذف کن")
+        for mp in s.exec(select(m.MediaPost).where(m.MediaPost.site_id == site_id)).all():
+            delete_image(mp.image_url)
+            s.delete(mp)
         s.delete(s.get(m.Site, site_id))
         s.commit()
     return back("/sites", "حذف شد")
+
+
+# ---------------------------------------------------------------- ready posts (image + caption) per site
+
+
+@app.get("/posts", response_class=HTMLResponse, dependencies=protected)
+def posts_page(request: Request, site: int = 0, edit: int = 0):
+    with m.session() as s:
+        sites = s.exec(select(m.Site).order_by(m.Site.id)).all()
+        q = select(m.MediaPost).order_by(m.MediaPost.site_id, m.MediaPost.id.desc())
+        if site:
+            q = q.where(m.MediaPost.site_id == site)
+        posts = s.exec(q).all()
+    current = _get(m.MediaPost, edit) if edit else None
+    return render(request, "posts.html", posts=posts, sites=sites, names={x.id: x.name for x in sites},
+                  f_site=site, current=current)
+
+
+@app.post("/posts", dependencies=protected)
+async def post_save(request: Request):
+    form = await request.form()
+    f = {k: v for k, v in form.items() if isinstance(v, str)}
+    upload = form.get("image_file")
+    new_image = ""
+    if upload is not None and not isinstance(upload, str) and upload.filename:
+        try:
+            new_image = await save_image(upload, request)
+        except ValueError as e:
+            return back("/posts", str(e))
+    with m.session() as s:
+        mp = s.get(m.MediaPost, int(f["id"])) if f.get("id") else m.MediaPost(site_id=0)
+        if not mp.id and not new_image:
+            return back("/posts", "یک تصویر انتخاب کن")
+        if new_image:
+            delete_image(mp.image_url)
+            mp.image_url = new_image
+        mp.site_id = int(f.get("site_id") or 0)
+        mp.caption = f.get("caption", "").strip()
+        mp.link_url = f.get("link_url", "").strip()
+        mp.enabled = bool(f.get("enabled"))
+        if not s.get(m.Site, mp.site_id):
+            return back("/posts", "سایت را انتخاب کن")
+        s.add(mp)
+        s.commit()
+    return back("/posts", "پست ذخیره شد")
+
+
+@app.post("/posts/{post_id}/{action}", dependencies=protected)
+def post_action(post_id: int, action: str):
+    with m.session() as s:
+        mp = s.get(m.MediaPost, post_id)
+        if mp is None:
+            raise HTTPException(404)
+        if action == "delete":
+            delete_image(mp.image_url)
+            s.delete(mp)
+        elif action == "toggle":
+            mp.enabled = not mp.enabled
+            s.add(mp)
+        else:
+            raise HTTPException(400)
+        s.commit()
+    return back("/posts", "انجام شد")
 
 
 # ---------------------------------------------------------------- accounts

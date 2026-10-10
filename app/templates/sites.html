@@ -20,7 +20,7 @@
     <label><span>آدرس سایت *</span><input name="url" class="ltr" required placeholder="https://example.com" value="{{ current.url if current }}"></label>
     <label><span>زبان محتوا</span><input name="language" value="{{ current.language if current else 'fa' }}" placeholder="fa / en / ar / tr"></label>
     <label><span>حوزه‌ی کاری</span><input name="niche" value="{{ current.niche if current }}"></label>
-    <label><span>تصویر (برای اینستاگرام/پینترست) — JPG، PNG، WEBP</span>
+    <label><span>تصویر پیش‌فرض (اختیاری) — فقط وقتی استفاده می‌شود که در صفحه‌ی <a href="/posts">پست‌ها</a> پستی برای این سایت نباشد</span>
       <input type="file" name="image_file" id="image_file" accept="image/jpeg,image/png,image/webp,image/gif">
       <img id="image_preview" src="{{ current.image_url if current and current.image_url }}" alt=""
            style="max-width:160px;max-height:120px;margin-top:6px;border-radius:6px;{{ '' if current and current.image_url else 'display:none' }}">

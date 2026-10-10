@@ -38,6 +38,27 @@ class Site(SQLModel, table=True):
     enabled: bool = True
 
 
+class MediaPost(SQLModel, table=True):
+    """A ready post for a site: an image plus (optionally) your own caption and link. A site can have
+    many; social posts use them in rotation (least used first). Empty caption = the AI writes the text."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    site_id: int = Field(index=True)
+    image_url: str = ""
+    caption: str = ""
+    link_url: str = ""  # empty = a page of the site chosen as usual
+    enabled: bool = True
+    used_count: int = 0
+    last_used_at: Optional[NaiveDatetime] = None
+
+
+def pick_media(s: Session, site_id: int) -> "MediaPost | None":
+    """The ready post of this site that was used the least (and longest ago)."""
+    rows = s.exec(select(MediaPost).where(MediaPost.site_id == site_id, MediaPost.enabled == True)).all()  # noqa: E712
+    return min(rows, key=lambda r: (r.used_count, r.last_used_at or dt.datetime.min, r.id), default=None)
+
+
 class Account(SQLModel, table=True):
     """A publishing account on one platform. `kind` selects the publisher adapter."""
 
