@@ -17,7 +17,7 @@
   {% for p in recent %}<tr><td class="muted" style="white-space:nowrap">{{ p.created_at|local }}</td><td>{{ p.account_label }} <span class="muted">({{ p.account_kind }})</span></td>
     <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title[:70] }}</a>{% else %}{{ p.title[:70] }}{% endif %}</td>
     <td class="{{ p.status }}">{{ p.status|status_fa }}{% if p.error %}<div class="muted" style="font-size:12px;max-width:340px">{{ p.error[:180] }}</div>{% endif %}</td>
-    <td style="white-space:nowrap">{% if p.status == 'dry_run' %}{% if p.draft %}<a class="btn" style="font-size:12px;padding:2px 8px" href="/publications/{{ p.id }}/draft">ویرایش / انتشار</a>{% endif %}
+    <td style="white-space:nowrap">{% if p.status == 'dry_run' %}<a class="btn" style="font-size:12px;padding:2px 8px" href="/publications/{{ p.id }}/draft">ویرایش / انتشار</a>
       <form class="inline" method="post" action="/publications/{{ p.id }}/draft" onsubmit="return confirm('حذف شود؟')"><button name="action" value="delete" class="sec" style="font-size:12px;padding:2px 8px">حذف</button></form>
       {% else %}<form class="inline" method="post" action="/publications/{{ p.id }}/resend" onsubmit="return confirm('دوباره با همین اکانت منتشر شود؟')"><button class="sec" style="font-size:12px;padding:2px 8px">ارسال دوباره</button></form>{% endif %}</td></tr>
   {% else %}<tr><td colspan="5" class="muted">هنوز چیزی منتشر نشده. <a href="/compose?site={{ site.id }}">اولین پست را بگذار</a> یا در تب «کمپین خودکار» انتشار خودکار را روشن کن.</td></tr>{% endfor %}</table>
@@ -115,7 +115,7 @@
         {% if p.category == 'article' %}{% if p.link_found %}<span class="ok">بک‌لینک زنده {{ p.link_rel or 'dofollow' }}</span>{% elif p.link_found is sameas false %}<span class="error">بک‌لینک پیدا نشد</span>{% endif %}{% endif %}
       </div>
       <div style="margin-top:6px;font-size:12px">{{ p.account_label }}
-        {% if p.status == 'dry_run' %}{% if p.draft %}<a class="btn" style="font-size:12px;padding:2px 8px" href="/publications/{{ p.id }}/draft">ویرایش / انتشار</a>{% endif %}
+        {% if p.status == 'dry_run' %}<a class="btn" style="font-size:12px;padding:2px 8px" href="/publications/{{ p.id }}/draft">ویرایش / انتشار</a>
           <form class="inline" method="post" action="/publications/{{ p.id }}/draft" onsubmit="return confirm('حذف شود؟')"><button name="action" value="delete" class="sec" style="font-size:12px;padding:2px 8px">حذف</button></form>
         {% else %}<form class="inline" method="post" action="/publications/{{ p.id }}/resend" onsubmit="return confirm('دوباره با همین اکانت منتشر شود؟')"><button class="sec" style="font-size:12px;padding:2px 8px">ارسال دوباره</button></form>{% endif %}</div>
     </div>

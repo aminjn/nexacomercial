@@ -6,7 +6,7 @@
     <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title[:70] }}</a>{% else %}<span title="{{ p.body_preview }}">{{ p.title[:70] }}</span>{% endif %}</td>
     <td class="{{ p.status }}">{{ p.status|status_fa }}{% if p.error %}<div class="muted" style="max-width:320px">{{ p.error[:200] }}</div>{% endif %}</td>
     <td>{% if p.status == 'ok' and not checkable(p) %}<span class="muted" title="{{ 'در کپشن اینستاگرام لینک کلیک‌پذیر نیست؛ برای دیده شدن و فروش است، نه سئو' if p.account_kind.startswith('instagram') else 'آدرس خود پست معلوم نیست' }}">— {{ 'بدون لینک (اینستاگرام)' if p.account_kind.startswith('instagram') else 'قابل بررسی نیست' }}</span>{% elif p.link_found is none %}<span class="muted">؟</span>{% elif p.link_found %}<span class="ok">زنده {{ p.link_rel or 'dofollow' }}</span>{% else %}<span class="error">پیدا نشد {{ p.link_rel }}</span>{% endif %}</td>
-    <td>{% if p.status == 'dry_run' %}{% if p.draft %}<a class="btn" style="white-space:nowrap" href="/publications/{{ p.id }}/draft">ویرایش / انتشار</a>{% endif %}
+    <td>{% if p.status == 'dry_run' %}<a class="btn" style="white-space:nowrap" href="/publications/{{ p.id }}/draft">ویرایش / انتشار</a>
       <form class="inline" method="post" action="/publications/{{ p.id }}/draft" onsubmit="return confirm('حذف شود؟')"><button name="action" value="delete" class="sec">حذف</button></form>
     {% else %}<form class="inline" method="post" action="/publications/{{ p.id }}/resend"
           onsubmit="return confirm('{{ 'این پست واقعاً منتشر نشده بود؟ ' if p.status == 'ok' else '' }}دوباره با همین اکانت منتشر شود (متن و عکس تازه)؟')"><button class="sec" style="white-space:nowrap">ارسال دوباره</button></form>{% endif %}</td></tr>

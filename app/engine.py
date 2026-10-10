@@ -223,16 +223,40 @@ def explain_error(stage: str, kind: str, e: Exception) -> str:
     return " ".join(x for x in (f"[{where}]", why, todo, f"— {raw}") if x)
 
 
+def draft_of(rec: m.Publication) -> dict:
+    """The draft's full content; for drafts made before it was stored, rebuilt from the saved preview."""
+    if rec.draft:
+        return dict(rec.draft)
+    body = (rec.body_preview or "").strip()
+    if rec.category == "article":
+        return {"title": rec.title, "body_markdown": body, "excerpt": "", "tags": [],
+                "link_url": rec.link_url, "anchor": rec.anchor}
+    # social preview = text, hashtag line, link — drop the link/hashtag lines, keep the text
+    blocks = [b.strip() for b in body.split("\n\n") if b.strip()]
+    tags: list[str] = []
+    text_blocks = []
+    for b in blocks:
+        words = b.split()
+        if len(words) == 1 and "://" in b:
+            continue
+        if words and all(w.startswith("#") for w in words):
+            tags += [w.lstrip("#") for w in words]
+            continue
+        text_blocks.append(b)
+    return {"text": "\n\n".join(text_blocks), "hashtags": tags, "link_url": rec.link_url,
+            "image_url": rec.image_url, "title": ""}
+
+
 def publish_draft(pub_id: int) -> m.Publication:
     """Publish a draft (status dry_run) as it is now — after any edits — through the same account."""
     with m.session() as s:
         rec = s.get(m.Publication, pub_id)
-        if rec is None or rec.status != "dry_run" or not rec.draft:
+        if rec is None or rec.status != "dry_run":
             raise PublishError("این پیش‌نویس پیدا نشد یا قبلاً منتشر شده")
         account, site = s.get(m.Account, rec.account_id), s.get(m.Site, rec.site_id)
     if account is None or site is None:
         raise PublishError("اکانت یا سایت این پیش‌نویس حذف شده")
-    d, stage = dict(rec.draft), "setup"
+    d, stage = draft_of(rec), "setup"
     try:
         pub = make(account.kind, {**account.creds, "_account_id": account.id})
         stage = "publish"

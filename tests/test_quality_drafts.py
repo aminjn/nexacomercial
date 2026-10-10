@@ -88,3 +88,12 @@ def test_draft_edit_publish_and_delete(monkeypatch):
         assert p.status == "ok" and p.url == "https://t.me/c/9" and p.draft is None
         assert s.get(m.Publication, other.id) is None
         assert s.get(m.Account, acc.id).published_count == 1
+
+
+def test_old_draft_without_stored_content_is_rebuilt():
+    p = m.Publication(site_id=1, account_id=1, category="social", status="dry_run", link_url="https://x.com/a",
+                      body_preview="متن اصلی پست\n\n#سئو #بک_لینک\n\nhttps://cm.example/r/abc")
+    d = engine.draft_of(p)
+    assert d["text"] == "متن اصلی پست" and d["hashtags"] == ["سئو", "بک_لینک"] and d["link_url"] == "https://x.com/a"
+    a = m.Publication(site_id=1, account_id=1, category="article", status="dry_run", title="T", body_preview="body")
+    assert engine.draft_of(a)["title"] == "T" and engine.draft_of(a)["body_markdown"] == "body"

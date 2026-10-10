@@ -23,6 +23,7 @@
   <label><span>مدل *</span><input name="llm_model" id="model" class="ltr" list="model_list" value="{{ settings.llm_model }}"><datalist id="model_list"></datalist>
     <small class="help">اسم مدلی که روی سرور هست. دکمه‌ی «دریافت لیست مدل‌ها» را بزن تا از خود سرور بخواند و از لیست انتخاب کنی.</small>
     <button type="button" class="sec" id="fetch_models" style="margin-top:6px">دریافت لیست مدل‌ها از سرور</button>
+    <select id="model_pick" style="display:none;margin-top:6px" class="ltr"></select>
     <small class="help" id="models_msg"></small></label>
 </div>
 
@@ -172,15 +173,20 @@ document.getElementById('fetch_models').addEventListener('click', async () => {
   try {
     const r = await (await fetch('/settings/models?' + q)).json();
     list.innerHTML = '';
-    for (const name of r.models) { const o = document.createElement('option'); o.value = name; list.appendChild(o); }
+    const pick = document.getElementById('model_pick'), model = document.getElementById('model');
+    pick.innerHTML = '<option value="">— یک مدل انتخاب کن —</option>';
+    for (const name of r.models) {
+      const o = document.createElement('option'); o.value = name; list.appendChild(o);
+      const p = document.createElement('option'); p.value = p.textContent = name; p.selected = name === model.value; pick.appendChild(p);
+    }
+    pick.style.display = r.models.length ? '' : 'none';
     if (r.error) msg.textContent = 'وصل نشد: ' + r.error;
     else if (!r.models.length) msg.textContent = 'وصل شد ولی هیچ مدلی روی سرور نیست (روی سرور: ollama pull اسم-مدل).';
     else {
-      msg.textContent = 'وصل شد ✓ مدل‌ها: ' + r.models.join('، ') + ' — روی کادر مدل کلیک کن و انتخاب کن.';
-      const model = document.getElementById('model');
-      if (!r.models.includes(model.value)) model.value = r.models[0];
+      msg.textContent = `وصل شد ✓ ${r.models.length} مدل پیدا شد — از لیست بالا انتخاب کن، بعد «ذخیره» را بزن.`;
     }
   } catch (e) { msg.textContent = 'خطا: ' + e; }
 });
+document.getElementById('model_pick').addEventListener('change', e => { if (e.target.value) document.getElementById('model').value = e.target.value; });
 </script>
 {% endblock %}

@@ -1015,9 +1015,9 @@ def publications_page(request: Request, site_id: int = 0, status: str = "", limi
 @app.get("/publications/{pub_id}/draft", response_class=HTMLResponse, dependencies=protected)
 def draft_page(request: Request, pub_id: int):
     p = _get(m.Publication, pub_id)
-    if p.status != "dry_run" or not p.draft:
-        return back(f"/sites/{p.site_id}", "این مورد پیش‌نویس نیست (یا قبل از این نسخه ساخته شده و متن کاملش ذخیره نشده)")
-    return render(request, "draft.html", p=p, d=p.draft, site=_get(m.Site, p.site_id))
+    if p.status != "dry_run":
+        return back(f"/sites/{p.site_id}", "این مورد پیش‌نویس نیست")
+    return render(request, "draft.html", p=p, d=engine.draft_of(p), site=_get(m.Site, p.site_id))
 
 
 @app.post("/publications/{pub_id}/draft", dependencies=protected)
@@ -1033,7 +1033,7 @@ async def draft_action(pub_id: int, request: Request):
             s.delete(p)
             s.commit()
             return back(f"/sites/{site_id}", "پیش‌نویس حذف شد")
-        d = dict(p.draft or {})
+        d = engine.draft_of(p)
         if p.category == "article":
             d["title"] = f.get("title", d.get("title", "")).strip()
             d["body_markdown"] = f.get("body_markdown", d.get("body_markdown", "")).strip()
