@@ -569,10 +569,34 @@ class DevToWeb(WebPublisher):
     login_markers = ("/enter",)
 
     def publish_article(self, article: Article) -> PublishResult:
+        tags = [t.lower() for t in (re.sub(r"[^A-Za-z0-9]", "", x) for x in article.tags) if t][:4]  # dev.to: latin only
+
         def recipe(page: Any) -> PublishResult:
             self.goto(page, "https://dev.to/new")
-            self.first(page, "#article-form-title").fill(article.title)
-            self.first(page, "#article_body_markdown").fill(article.body_markdown)
+            # the same request dev.to's own editor sends, from inside your logged-in page
+            r = page.evaluate("""async ([title, body, tags]) => {
+                const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                try {
+                    const r = await fetch('/articles', {method: 'POST', credentials: 'same-origin',
+                        headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': token},
+                        body: JSON.stringify({article: {title, body_markdown: body, published: true, tag_list: tags.join(',')}})});
+                    return {status: r.status, text: await r.text()};
+                } catch (e) { return {status: 0, text: String(e)}; }
+            }""", [article.title, article.body_markdown, tags])
+            if 200 <= r["status"] < 300:
+                try:
+                    d = json.loads(r["text"])
+                except ValueError:
+                    d = {}
+                path = d.get("current_state_path") or d.get("path") or d.get("url") or ""
+                url = path if path.startswith("http") else ("https://dev.to" + path if path else "https://dev.to/dashboard")
+                return PublishResult(url=url.split("?")[0], external_id=str(d.get("id", "")))
+            if r["status"] in (401, 403) and "csrf" not in r["text"].lower():
+                raise PublishError(EXPIRED)
+            # fallback: fill the editor form
+            self.first(page, "#article-form-title", 'textarea[placeholder*="title" i]').fill(article.title)
+            self.first(page, "#article_body_markdown", 'textarea[name="article[body_markdown]"]',
+                       'textarea[aria-label*="Content" i]', 'textarea[placeholder*="Write your post" i]').fill(article.body_markdown)
             self.button(page, re.compile(r"^Publish$")).click()
             page.wait_for_url(lambda u: not u.rstrip("/").endswith("/new") and "/edit" not in u, timeout=60_000)
             return PublishResult(url=page.url)

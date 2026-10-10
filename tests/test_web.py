@@ -137,8 +137,8 @@ def test_devto_recipe():
     art = Article(title="T", body_markdown="## H\n\nbody [link](https://example.com)", excerpt="", tags=[],
                   link_url="https://example.com", anchor="link", site_id=1)
     res = make("devto_web", {"_account_id": a.id}).publish_article(art)
-    assert res.url == "https://dev.to/me/my-post-1"
-    assert "t=T" in POSTED[0]["body"] and "example.com" in POSTED[0]["body"]
+    assert res.url == "https://dev.to/me/my-post-1"  # editor request failed (404 here) → the form was used
+    assert "t=T" in POSTED[-1]["body"] and "example.com" in POSTED[-1]["body"]
 
 
 def test_mastodon_recipe(monkeypatch):
@@ -353,3 +353,17 @@ def test_blogger_recipe():
     assert res.url == "https://www.blogger.com/blog/posts/123456789012"
     body = POSTED[0]["body"]
     assert body.startswith("عنوان|") and 'href="https://example.com/p"' in body
+
+
+def test_devto_editor_request():
+    a = account("devto_web")
+    logged_in(a, ".dev.to")
+    PAGES["https://dev.to/new"] = '<meta name="csrf-token" content="TOK"><div id="editor"></div>'
+    PAGES["https://dev.to/articles"] = '{"id": 7, "current_state_path": "/me/kharid-melk-1"}'
+    art = Article(title="خرید ملک", body_markdown="متن [ملک](https://example.com)", excerpt="",
+                  tags=["ملک", "RealEstate", "home-buying"], link_url="https://example.com", anchor="ملک", site_id=1)
+    res = make("devto_web", {"_account_id": a.id}).publish_article(art)
+    assert res.url == "https://dev.to/me/kharid-melk-1" and res.external_id == "7"
+    import json
+    sent = json.loads(POSTED[0]["body"])["article"]
+    assert sent["title"] == "خرید ملک" and sent["published"] and sent["tag_list"] == "realestate,homebuying"
