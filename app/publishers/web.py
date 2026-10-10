@@ -272,10 +272,35 @@ class InstagramWeb(WebPublisher):
                                  'div[role="dialog"] [contenteditable="true"]')
             self.type_into(page, caption, post.render(self.max_chars))
             self.button(page, re.compile(r"^(Share|اشتراک‌گذاری|اشتراک گذاری|هم‌رسانی)$")).click()
-            caption.wait_for(state="detached", timeout=120_000)
-            return PublishResult(url="https://www.instagram.com/")
+            self._wait_shared(page)
+            return PublishResult(url=self._latest_post(page) or "https://www.instagram.com/")
 
         return self.run(recipe)
+
+    @staticmethod
+    def _wait_shared(page: Any, timeout_sec: int = 180) -> None:
+        """Only Instagram's own "post shared" message counts as success; its error text is reported."""
+        done = page.locator(f"text=/{IG_SHARED}/i").first
+        fail = page.locator(f"text=/{IG_FAILED}/i").first
+        for _ in range(timeout_sec):
+            if done.is_visible():
+                return
+            if fail.is_visible():
+                raise PublishError("اینستاگرام پست را منتشر نکرد: " + fail.inner_text()[:200])
+            page.wait_for_timeout(1000)
+        raise PublishError("اینستاگرام پیام «پست منتشر شد» را نشان نداد؛ احتمالاً منتشر نشده — عکس صفحه را ببین")
+
+    def _latest_post(self, page: Any) -> str:
+        """Address of the newest post on the profile (needs the account's username in the "handle" field)."""
+        handle = str(self.opt("handle") or "").strip().lstrip("@")
+        if not handle:
+            return ""
+        try:
+            page.goto(f"https://www.instagram.com/{handle}/", wait_until="domcontentloaded", timeout=60_000)
+            href = page.locator('a[href*="/p/"], a[href*="/reel/"]').first.get_attribute("href", timeout=20_000) or ""
+        except Exception:  # noqa: BLE001
+            return ""
+        return "https://www.instagram.com" + href if href.startswith("/") else href
 
     @staticmethod
     def _dismiss(page: Any) -> None:
@@ -291,6 +316,9 @@ class InstagramWeb(WebPublisher):
 
 
 IG_CREATE = ("New post", "Create", "پست جدید", "ایجاد", "ساختن")
+IG_SHARED = r"post has been shared|Post shared|reel has been shared|Reel shared|به اشتراک گذاشته شد|هم‌رسانی شد|منتشر شد"
+IG_FAILED = (r"couldn't be shared|could not be shared|Something went wrong|Try again later|"
+             r"We restrict certain activity|مشکلی پیش آمد|منتشر نشد|بعداً دوباره امتحان")
 IG_POST = ("Post", "پست")
 
 

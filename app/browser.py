@@ -68,6 +68,11 @@ def error_shot(account_id: int):
     return settings.data_path / "sessions" / f"{int(account_id)}-error.jpg"
 
 
+def last_shot(account_id: int):
+    """Screenshot taken right after the last successful browser publish."""
+    return settings.data_path / "sessions" / f"{int(account_id)}-last.jpg"
+
+
 def has_session(account_id: int) -> bool:
     return _session_file(account_id).exists()
 
@@ -285,6 +290,10 @@ def run_with_session(account_id: int, recipe: Callable[[Any], Any], timeout: flo
             page = ctx.new_page()
             result = recipe(page)
             save_state(account_id, ctx.storage_state())
+            try:  # what the page looked like right after publishing, to check it from the dashboard
+                ctx.pages[-1].screenshot(path=str(last_shot(account_id)), type="jpeg", quality=60)
+            except Exception:  # noqa: BLE001
+                pass
             return result
         except Exception:
             try:

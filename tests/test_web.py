@@ -170,7 +170,7 @@ def test_instagram_recipe_persian_ui_and_error_shot(tmp_path):
       <div role="dialog" id="d" style="display:none"><input type="file" onchange="document.getElementById('n').style.display='inline'">
       <button id="n" style="display:none" onclick="this.dataset.c=(+this.dataset.c||0)+1; if(this.dataset.c==2){document.getElementById('cap').style.display='block';document.getElementById('s').style.display='inline'}">بعدی</button>
       <div id="cap" aria-label="Write a caption..." contenteditable="true" style="display:none"></div>
-      <button id="s" style="display:none" onclick="fetch('/share',{method:'POST',body:document.getElementById('cap').innerText});document.getElementById('cap').remove()">اشتراک‌گذاری</button></div>"""
+      <button id="s" style="display:none" onclick="fetch('/share',{method:'POST',body:document.getElementById('cap').innerText});document.getElementById('cap').remove();document.body.insertAdjacentHTML('beforeend','<p>پست شما به اشتراک گذاشته شد.</p>')">اشتراک‌گذاری</button></div>"""
     PAGES["https://www.instagram.com/share"] = "ok"
     res = make("instagram_web", {"_account_id": a.id}).publish_social(
         SocialPost(text="سلام", link_url="https://example.com/", image_url=str(img)))
@@ -214,3 +214,20 @@ def test_square_image_pads_wide_logo(tmp_path):
     assert data[:2] == b"\xff\xd8"
     w, h = jpeg_size(data)
     assert w == h and w > 1200
+
+
+def test_instagram_reports_failure_instead_of_success():
+    from app.publishers.base import PublishError
+    a = account("instagram_web", handle="melkjet")
+    logged_in(a, ".instagram.com")
+    PAGES["https://www.instagram.com/"] = """<div role="dialog"><input type="file" onchange="document.getElementById('n').style.display='inline'">
+      <button id="n" style="display:none" onclick="document.getElementById('cap').style.display='block';document.getElementById('s').style.display='inline'">Next</button>
+      <div id="cap" aria-label="Write a caption..." contenteditable="true" style="display:none"></div>
+      <button id="s" style="display:none" onclick="document.getElementById('cap').remove();document.body.insertAdjacentHTML('beforeend','<p>Your post couldn\\'t be shared.</p>')">Share</button></div>"""
+    PAGES["https://www.instagram.com/create/select/"] = PAGES["https://www.instagram.com/"]
+    import base64
+    img = browser.settings.data_path / "t.png"
+    img.write_bytes(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="))
+    with pytest.raises(PublishError, match="منتشر نکرد"):
+        make("instagram_web", {**a.creds, "_account_id": a.id}).publish_social(
+            SocialPost(text="x", link_url="https://example.com/", image_url=str(img)))
