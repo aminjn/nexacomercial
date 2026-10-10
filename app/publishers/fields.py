@@ -367,7 +367,7 @@ for _k in WEB_FIELDS:
     KIND_GUIDES[_k] = {"summary": "ورود با نام کاربری و رمز خودت، بدون API و توکن.", "steps": WEB_LOGIN_STEPS,
                        "links": [], "notes": WEB_NOTE}
 
-SECRET_HINTS = ("token", "secret", "password", "key")
+SECRET_HINTS = ("token", "secret", "password", "key", "blog_email")
 
 
 def is_secret(name: str) -> bool:
