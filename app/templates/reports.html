@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card"><h2>گزارش کلیک کمپین‌ها — {{ days }} روز اخیر</h2>
+<p class="muted" style="font-size:13px">کلیک‌ها با لینک کوتاه پست‌ها (<code class="ltr">/r/...</code>) شمرده می‌شوند. بازدید ربات‌ها، مثل پیش‌نمایش لینک تلگرام و X، حساب نمی‌شود. مقاله‌ها لینک کوتاه ندارند؛ کلیک آن‌ها با UTM در گوگل آنالیتیکس (پایین صفحه) دیده می‌شود.</p>
+<form method="get" style="margin-bottom:10px">{% for d in (7, 30, 90, 365) %}<a class="btn {{ '' if d == days else 'sec' }}" href="/reports?days={{ d }}" style="margin-left:4px">{{ d }} روز</a>{% endfor %}</form>
+<div class="stats" style="margin-bottom:12px"><div class="stat"><span class="muted">کل کلیک‌ها</span><b>{{ total_clicks }}</b></div></div>
+<table><tr><th>کمپین</th><th>سایت</th><th>انتشار موفق</th><th>کلیک</th><th>کلیک ۷ روز</th><th>کلیک به ازای هر انتشار</th><th>به تفکیک پلتفرم (کلیک / انتشار)</th></tr>
+{% for cid, r in rows.items() %}{% set c = campaigns.get(cid) %}
+<tr><td>{% if c %}<a href="/campaigns?edit={{ c.id }}">{{ c.name }}</a>{% else %}<span class="muted">بدون کمپین (تست / دستی)</span>{% endif %}</td>
+  <td>{% if r.site_id in sites %}<a href="/sites/{{ r.site_id }}">{{ sites[r.site_id].name }}</a>{% endif %}</td>
+  <td>{{ r.pubs }}</td><td><b>{{ r.clicks }}</b></td><td>{{ r.week }}</td><td>{{ '%.1f'|format(r.clicks / r.pubs) if r.pubs else '—' }}</td>
+  <td style="font-size:12px">{% for k, v in r.platforms.items() %}{{ names.get(k, k) }}: {{ v.clicks }} / {{ v.pubs }}{{ '، ' if not loop.last }}{% endfor %}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">هنوز انتشار یا کلیکی در این بازه نیست.</td></tr>{% endfor %}</table></div>
+
+<div class="card"><h2>پرکلیک‌ترین پست‌ها</h2>
+<table><tr><th>کلیک</th><th>پلتفرم</th><th>متن</th><th>سایت</th><th>زمان</th></tr>
+{% for p in top %}<tr><td><b>{{ p.clicks }}</b></td><td>{{ names.get(p.account_kind.removesuffix('_web'), p.account_kind) }}</td>
+  <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title[:80] }}</a>{% else %}{{ p.title[:80] }}{% endif %}</td>
+  <td>{{ sites[p.site_id].name if p.site_id in sites }}</td><td class="muted">{{ p.created_at|local }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">هنوز کلیکی ثبت نشده.</td></tr>{% endfor %}</table></div>
+
+<div class="card"><h2>گوگل آنالیتیکس (UTM)</h2>
+{% if not ga_on %}<p class="muted">وصل نیست. در <a href="/settings?at=ga#ga">تنظیمات ← ردیابی کلیک و گوگل آنالیتیکس</a> Property ID و سرویس‌اکانت را بگذار تا گزارش کمپین‌ها از خود GA این‌جا بیاید و هدف <code>nexa_click</code> خودکار ساخته شود.</p>
+{% elif ga_error %}<p class="error">{{ ga_error }}</p>
+{% else %}<table><tr><th>کمپین (utm_campaign)</th><th>منبع</th><th>نوع</th><th>سشن</th><th>کاربر</th><th>تبدیل (Key events)</th></tr>
+{% for r in ga_rows %}<tr><td>{{ r.campaign }}</td><td>{{ r.source }}</td><td>{{ r.medium }}</td><td>{{ r.sessions }}</td><td>{{ r.users }}</td><td>{{ r.key_events }}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">GA هنوز ورودی‌ای با UTM این برنامه ندیده (چند ساعت تا یک روز طول می‌کشد).</td></tr>{% endfor %}</table>{% endif %}
+</div>
+{% endblock %}

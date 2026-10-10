@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from sqlmodel import Session, select
 
 from . import models as m
+from . import tracking
 from .config import settings
 from .content import SocialPost, generate_article, generate_social, pick_link
 from .linkcheck import check_backlink
@@ -100,6 +101,10 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
                         account_kind=account.kind, account_label=account.label, category=account.category)
     stage = "setup"  # setup → ai (writing) → publish (platform API); only publish errors count against the account
     media = None
+    # tracking: utm_campaign = campaign name, utm_source = platform, utm_content = this publication's code
+    rec.track_code = tracking.new_code()
+    utm = dict(source=account.kind.removesuffix("_web"), campaign=tracking.slug(campaign.name) if campaign else "manual",
+               content=rec.track_code)
     try:
         creds = account.creds
         pub = make(account.kind, {**creds, "_account_id": account.id})
@@ -109,6 +114,10 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             with m.session() as s:
                 recent = m.recent_titles(s, site.id)
             art = generate_article(llm, site, recent, extra)
+            if settings.utm_on_articles:  # the backlink still points straight at the site (SEO), only tagged
+                tagged = tracking.tag(art.link_url, medium="article", **utm)
+                art.body_markdown = tracking.retag_markdown(art.body_markdown, art.link_url, tagged)
+                art.link_url = tagged
             rec.title, rec.link_url, rec.anchor = art.title, art.link_url, art.anchor
             rec.body_preview = art.body_markdown[:600]
             stage = "publish"
@@ -125,7 +134,9 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
                 if media:
                     post.image_url = media.image_url
                     post.link_url = media.link_url or post.link_url
-            rec.title, rec.link_url, rec.image_url = post.text[:120], post.link_url, post.image_url
+            target = tracking.tag(post.link_url, medium="social", **utm)
+            post.link_url = tracking.short_url(rec.track_code) or target  # short link counts the click
+            rec.title, rec.link_url, rec.image_url = post.text[:120], target, post.image_url
             rec.body_preview = post.render()[:600]
             if pub.needs_image and not (post.image_url or creds.get("image_url")):
                 stage = "setup"
@@ -320,6 +331,8 @@ def verify_links(max_age_hours: float | None = None) -> int:
             if (p.checked_at and p.checked_at > cutoff) or not checkable(p):
                 continue
             p.link_found, p.link_rel = check_backlink(p.url, p.link_url)
+            if not p.link_found and p.category == "social" and tracking.short_url(p.track_code):
+                p.link_found, p.link_rel = check_backlink(p.url, tracking.short_url(p.track_code))
             p.checked_at = m.utcnow()
             s.add(p)
             n += 1

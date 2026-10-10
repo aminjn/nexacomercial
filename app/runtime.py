@@ -28,6 +28,13 @@ EDITABLE: dict[str, tuple[type, bool]] = {
     "v2ray_enabled": (bool, False),
     "v2ray_link": (str, True),
     "v2ray_for_llm": (bool, False),
+    "utm_enabled": (bool, False),
+    "utm_on_articles": (bool, False),
+    "click_redirect": (bool, False),
+    "ga_measurement_id": (str, False),
+    "ga_api_secret": (str, True),
+    "ga_property_id": (str, False),
+    "ga_service_account": (str, True),
     "public_url": (str, False),
     "dry_run": (bool, False),
 }

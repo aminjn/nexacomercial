@@ -344,7 +344,7 @@ def test_ready_posts_rotate_with_own_caption_and_image():
     first = engine.publish(site, acc, dry_run=True)
     second = engine.publish(site, acc, dry_run=True)
     assert first.status == second.status == "dry_run"
-    assert "کپشن خودم #ملکجت" in first.body_preview and first.link_url == "https://example.com/rent"
+    assert "کپشن خودم #ملکجت" in first.body_preview and first.link_url.startswith("https://example.com/rent?utm_source=instagram")
     assert "کپشن خودم" not in second.body_preview  # second ready post: AI text, its own image
     with m.session() as s:
         assert [p.used_count for p in sorted(s.exec(m.select(m.MediaPost)).all(), key=lambda p: p.id)] == [1, 1]

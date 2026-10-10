@@ -143,11 +143,25 @@ class Publication(SQLModel, table=True):
     link_rel: str = ""  # "" (dofollow) | nofollow | ugc | sponsored ...
     body_preview: str = ""
     image_url: str = ""  # image posted with a social post
+    track_code: str = Field(default="", index=True)  # /r/<code> short link and utm_content
+    clicks: int = 0  # clicks on the short link (counted by this dashboard)
     views: Optional[int] = None  # stats, refreshed periodically (app/stats.py); None = not available
     likes: Optional[int] = None
     comments: Optional[int] = None
     shares: Optional[int] = None
     stats_at: Optional[NaiveDatetime] = None
+
+
+class Click(SQLModel, table=True):
+    """One click on a tracked short link (/r/<code>)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: NaiveDatetime = Field(default_factory=utcnow, index=True)
+    publication_id: int = Field(index=True)
+    campaign_id: Optional[int] = Field(default=None, index=True)
+    site_id: int = Field(default=0, index=True)
+    platform: str = ""
+    referer: str = ""
 
 
 class RunLog(SQLModel, table=True):

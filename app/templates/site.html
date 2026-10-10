@@ -15,6 +15,7 @@
   <div class="stat"><span class="muted">امروز / ۷ روز</span><b>{{ summary.today }} / {{ summary.week }}</b></div>
   <div class="stat"><span class="muted">خطا</span><b class="{{ 'error' if summary.errors }}">{{ summary.errors }}</b></div>
   <div class="stat"><span class="muted">بک‌لینک زنده</span><b class="ok">{{ summary.live }}</b></div>
+  <div class="stat"><span class="muted">کلیک روی لینک‌ها</span><b>{{ summary.clicks }}</b></div>
   <div class="stat"><span class="muted">بازدید</span><b>{{ summary.views }}</b></div>
   <div class="stat"><span class="muted">لایک / کامنت</span><b>{{ summary.likes }} / {{ summary.comments }}</b></div>
 </div>
@@ -22,10 +23,10 @@
   <div class="bars">{% for d, n in per_day.items() %}<div title="{{ d }}: {{ n }}"><span style="height:{{ (n / max_day * 100)|round }}%"></span><small>{{ n }}</small><em>{{ d.day }}</em></div>{% endfor %}</div>
 </div>
 <div class="card"><h2>به تفکیک پلتفرم</h2>
-<table><tr><th>پلتفرم</th><th>موفق</th><th>خطا</th><th>آزمایشی</th><th>بک‌لینک زنده</th><th>بازدید</th><th>لایک</th><th>کامنت</th><th>بازنشر</th><th>آخرین انتشار</th></tr>
+<table><tr><th>پلتفرم</th><th>موفق</th><th>خطا</th><th>آزمایشی</th><th>بک‌لینک زنده</th><th>کلیک</th><th>بازدید</th><th>لایک</th><th>کامنت</th><th>بازنشر</th><th>آخرین انتشار</th></tr>
 {% for k, r in platforms.items() %}<tr><td><a href="/sites/{{ site.id }}?tab={{ k }}">{{ r.name }}</a></td><td class="ok">{{ r.ok }}</td><td class="{{ 'error' if r.error }}">{{ r.error }}</td><td>{{ r.dry_run }}</td>
-  <td>{{ r.live or '—' }}</td>{% for f in ('views', 'likes', 'comments', 'shares') %}<td>{{ r[f] if r.has_stats else '—' }}</td>{% endfor %}<td>{{ r.last|local }}</td></tr>
-{% else %}<tr><td colspan="10" class="muted">هنوز چیزی برای این سایت منتشر نشده.</td></tr>{% endfor %}</table>
+  <td>{{ r.live or '—' }}</td><td><b>{{ r.clicks }}</b></td>{% for f in ('views', 'likes', 'comments', 'shares') %}<td>{{ r[f] if r.has_stats else '—' }}</td>{% endfor %}<td>{{ r.last|local }}</td></tr>
+{% else %}<tr><td colspan="11" class="muted">هنوز چیزی برای این سایت منتشر نشده.</td></tr>{% endfor %}</table>
 <p class="muted" style="font-size:12px">«—» یعنی آن پلتفرم این آمار را عمومی نشان نمی‌دهد. آمار هر ۶ ساعت خودکار به‌روز می‌شود.</p></div>
 <div class="card"><h2>کمپین‌ها</h2>
 {% for c in campaigns %}<div><a href="/campaigns?edit={{ c.id }}">{{ c.name }}</a> <span class="muted">{{ 'فعال' if c.enabled else 'خاموش' }} · سقف روزانه {{ c.daily_limit }}</span></div>
@@ -44,6 +45,7 @@
 {% else %}{% set r = current %}
 <div class="stats" style="margin-bottom:16px">
   <div class="stat"><span class="muted">موفق / خطا</span><b>{{ r.ok }} / <span class="{{ 'error' if r.error }}">{{ r.error }}</span></b></div>
+  <div class="stat"><span class="muted">کلیک روی لینک‌ها</span><b>{{ r.clicks }}</b></div>
   {% if r.has_stats %}<div class="stat"><span class="muted">بازدید</span><b>{{ r.views }}</b></div>
   <div class="stat"><span class="muted">لایک</span><b>{{ r.likes }}</b></div>
   <div class="stat"><span class="muted">کامنت</span><b>{{ r.comments }}</b></div>
@@ -62,7 +64,7 @@
       {% if p.category == 'social' and p.body_preview %}<div style="font-size:12px;margin-top:4px;max-height:54px;overflow:hidden">{{ p.body_preview[:160] }}</div>{% endif %}
       {% if p.error %}<div class="muted" style="font-size:12px;margin-top:4px">{{ p.error[:160] }}</div>{% endif %}
       <div style="font-size:13px;margin-top:6px">
-        {% if p.views is not none %}👁 {{ p.views }} {% endif %}{% if p.likes is not none %}❤ {{ p.likes }} {% endif %}{% if p.comments is not none %}💬 {{ p.comments }} {% endif %}{% if p.shares %}🔁 {{ p.shares }}{% endif %}
+        {% if p.clicks %}🖱 {{ p.clicks }} {% endif %}{% if p.views is not none %}👁 {{ p.views }} {% endif %}{% if p.likes is not none %}❤ {{ p.likes }} {% endif %}{% if p.comments is not none %}💬 {{ p.comments }} {% endif %}{% if p.shares %}🔁 {{ p.shares }}{% endif %}
         {% if p.category == 'article' %}{% if p.link_found %}<span class="ok">بک‌لینک زنده {{ p.link_rel or 'dofollow' }}</span>{% elif p.link_found is sameas false %}<span class="error">بک‌لینک پیدا نشد</span>{% endif %}{% endif %}
       </div>
       <div style="margin-top:6px;font-size:12px">{{ p.account_label }}

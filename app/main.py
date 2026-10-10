@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
+import re
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from . import browser, engine, importer, runtime, scheduler, stats, v2ray
+from . import browser, engine, ga, importer, runtime, scheduler, stats, tracking, v2ray
 from . import models as m
 from .config import settings
 from .publishers import REGISTRY, make
@@ -143,7 +145,15 @@ def llm_test(next: str = "/"):
 def settings_page(request: Request):
     return render(request, "settings.html", has_llm_key=bool(settings.llm_api_key),
                   has_anthropic_key=bool(settings.anthropic_api_key), has_proxy=bool(settings.publish_proxy),
-                  v2=v2ray.status())
+                  v2=v2ray.status(), has_ga_secret=bool(settings.ga_api_secret),
+                  has_ga_sa=bool(settings.ga_service_account), ga_sa_email=_sa_email())
+
+
+def _sa_email() -> str:
+    try:
+        return json.loads(settings.ga_service_account).get("client_email", "") if settings.ga_service_account else ""
+    except ValueError:
+        return ""
 
 
 V2RAY_PAGE = "/settings?at=v2ray#v2ray"
@@ -167,9 +177,14 @@ async def settings_save(request: Request):
         "dry_run": bool(f.get("dry_run")),
         "v2ray_enabled": bool(f.get("v2ray_enabled")),
         "v2ray_for_llm": bool(f.get("v2ray_for_llm")),
+        "utm_enabled": bool(f.get("utm_enabled")),
+        "utm_on_articles": bool(f.get("utm_on_articles")),
+        "click_redirect": bool(f.get("click_redirect")),
+        "ga_measurement_id": f.get("ga_measurement_id", "").strip(),
+        "ga_property_id": f.get("ga_property_id", "").strip().removeprefix("properties/"),
     }
     # secrets: empty field = keep; "clear" checkbox = remove
-    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy", "v2ray_link"):
+    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy", "v2ray_link", "ga_api_secret", "ga_service_account"):
         v = f.get(key, "").strip()
         if v or f.get(f"clear_{key}"):
             values[key] = v
@@ -179,7 +194,19 @@ async def settings_save(request: Request):
         except v2ray.V2rayError as e:
             return back(V2RAY_PAGE, f"کانفیگ v2ray ذخیره نشد: {e}")
         values["v2ray_enabled"] = True  # a freshly pasted profile is meant to be used
+    if values.get("ga_service_account"):
+        try:
+            json.loads(values["ga_service_account"])["client_email"]
+        except (ValueError, KeyError, TypeError):
+            return back("/settings?at=ga#ga", "JSON سرویس‌اکانت گوگل نامعتبر است؛ کل محتوای فایل .json را بگذار")
+    ga_changed = any(k in values and values[k] != getattr(settings, k) for k in ("ga_property_id", "ga_service_account"))
     runtime.save(values)
+    if ga_changed and ga.configured():  # the goal is created automatically as soon as GA is connected
+        try:
+            msg = ga.ensure_key_event()
+        except Exception as e:  # noqa: BLE001
+            msg = f"گوگل آنالیتیکس: {e}"
+        return back("/settings?at=ga#ga", "تنظیمات ذخیره شد — " + msg)
     err = v2ray.sync()
     if err or "v2ray_link" in values:
         return back(V2RAY_PAGE, "تنظیمات ذخیره شد" + (f" — ولی v2ray اجرا نشد: {err}" if err else
@@ -341,6 +368,76 @@ def site_delete(site_id: int):
     return back("/sites", "حذف شد")
 
 
+# ---------------------------------------------------------------- tracked short links (public, no login)
+
+BOT_UA = re.compile(r"bot|crawl|spider|preview|facebookexternalhit|whatsapp|slack|discord|embedly|telegram|"
+                    r"linkedin|pinterest|skype|vkshare|bitly", re.I)
+
+
+@app.get("/r/{code}")
+def tracked_redirect(code: str, request: Request):
+    with m.session() as s:
+        pub = s.exec(select(m.Publication).where(m.Publication.track_code == code)).first()
+        if pub is None or not pub.link_url:
+            raise HTTPException(404)
+        target = pub.link_url
+        ua = request.headers.get("user-agent", "")
+        if not BOT_UA.search(ua):  # link previews (Telegram, X, ...) fetch the link too: not a person
+            pub.clicks += 1
+            s.add(pub)
+            s.add(m.Click(publication_id=pub.id, campaign_id=pub.campaign_id, site_id=pub.site_id,
+                          platform=stats.base_kind(pub.account_kind), referer=request.headers.get("referer", "")[:300]))
+            s.commit()
+            campaign = s.get(m.Campaign, pub.campaign_id) if pub.campaign_id else None
+            ga.send_click({"campaign": tracking.slug(campaign.name) if campaign else "manual",
+                           "source": stats.base_kind(pub.account_kind), "medium": pub.category,
+                           "content": code, "publication_id": pub.id})
+    return RedirectResponse(target, status_code=302)
+
+
+# ---------------------------------------------------------------- reports: clicks per campaign (+ Google Analytics)
+
+
+@app.get("/reports", response_class=HTMLResponse, dependencies=protected)
+def reports_page(request: Request, days: int = 30):
+    since = m.utcnow() - dt.timedelta(days=days)
+    week = m.utcnow() - dt.timedelta(days=7)
+    with m.session() as s:
+        campaigns = {c.id: c for c in s.exec(select(m.Campaign)).all()}
+        sites = {x.id: x for x in s.exec(select(m.Site)).all()}
+        pubs = s.exec(select(m.Publication).where(m.Publication.created_at >= since, m.Publication.status == "ok")).all()
+        clicks = s.exec(select(m.Click).where(m.Click.created_at >= since)).all()
+    rows: dict[Any, dict[str, Any]] = {}
+    for p in pubs:
+        r = rows.setdefault(p.campaign_id, {"pubs": 0, "clicks": 0, "week": 0, "platforms": {}, "site_id": p.site_id})
+        r["pubs"] += 1
+        r["platforms"].setdefault(stats.base_kind(p.account_kind), {"pubs": 0, "clicks": 0})["pubs"] += 1
+    for c in clicks:
+        r = rows.setdefault(c.campaign_id, {"pubs": 0, "clicks": 0, "week": 0, "platforms": {}, "site_id": c.site_id})
+        r["clicks"] += 1
+        r["week"] += c.created_at >= week
+        r["platforms"].setdefault(c.platform, {"pubs": 0, "clicks": 0})["clicks"] += 1
+    top = sorted((p for p in pubs if p.clicks), key=lambda p: p.clicks, reverse=True)[:20]
+    ga_rows, ga_error = [], ""
+    if ga.configured():
+        try:
+            ga_rows = ga.campaign_report(days)
+        except Exception as e:  # noqa: BLE001
+            ga_error = str(e)
+    return render(request, "reports.html", rows=rows, campaigns=campaigns, sites=sites, days=days, top=top,
+                  names=PLATFORM_NAMES, ga_rows=ga_rows, ga_error=ga_error, ga_on=ga.configured(),
+                  total_clicks=len(clicks))
+
+
+@app.post("/ga/key-event", dependencies=protected)
+def ga_key_event():
+    try:
+        msg = ga.ensure_key_event()
+    except Exception as e:  # noqa: BLE001
+        msg = f"گوگل آنالیتیکس: {e}"
+    return back("/settings?at=ga#ga", msg)
+
+
 # ---------------------------------------------------------------- one site: summary / instagram / publications / posts
 
 PLATFORM_NAMES = {
@@ -372,11 +469,11 @@ def site_page(request: Request, site_id: int, tab: str = "summary"):
     for p in pubs:
         key = stats.base_kind(p.account_kind)
         row = platforms.setdefault(key, {"name": PLATFORM_NAMES.get(key, key), "pubs": [], "ok": 0, "error": 0,
-                                         "dry_run": 0, "last": None, "views": 0, "likes": 0, "comments": 0,
+                                         "dry_run": 0, "last": None, "clicks": 0, "views": 0, "likes": 0, "comments": 0,
                                          "shares": 0, "live": 0, "has_stats": stats.has_stats(key)})
         row["pubs"].append(p)
         row[p.status] = row.get(p.status, 0) + 1
-        for k in ("views", "likes", "comments", "shares"):
+        for k in ("clicks", "views", "likes", "comments", "shares"):
             row[k] += getattr(p, k) or 0
         row["live"] += bool(p.link_found)
         if p.status == "ok" and (row["last"] is None or p.created_at > row["last"]):
@@ -388,7 +485,7 @@ def site_page(request: Request, site_id: int, tab: str = "summary"):
         "ok": len(ok), "errors": sum(1 for p in pubs if p.status == "error"),
         "today": per_day[today], "week": sum(per_day[d] for d in days[-7:]),
         "live": sum(1 for p in ok if p.link_found),
-        **{k: sum(getattr(p, k) or 0 for p in ok) for k in ("views", "likes", "comments", "shares")},
+        **{k: sum(getattr(p, k) or 0 for p in ok) for k in ("clicks", "views", "likes", "comments", "shares")},
     }
     return render(request, "site.html", site=site, tab=tab, tabs=tabs, platforms=platforms,
                   current=platforms.get(tab), posts=posts, campaigns=campaigns, summary=summary,

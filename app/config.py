@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     v2ray_socks_port: int = 10808
     xray_bin: str = ""  # empty = <data_dir>/xray/xray or `xray` on PATH
     xray_download_url: str = ""  # empty = latest release from GitHub
+    # Click tracking / Google Analytics (settings page). UTM tags go on every published link;
+    # social posts get a short link on public_url (/r/<code>) that counts the click and redirects.
+    utm_enabled: bool = True
+    utm_on_articles: bool = True  # UTM on backlinks inside articles too (they still point straight at the site)
+    click_redirect: bool = True
+    ga_measurement_id: str = ""  # G-XXXXXXX — clicks are also sent to GA4 as the "nexa_click" event
+    ga_api_secret: str = ""  # Admin → Data streams → Measurement Protocol API secrets
+    ga_property_id: str = ""  # numeric GA4 property id (for the automatic key event + reports)
+    ga_service_account: str = ""  # service-account JSON with Editor access to the property
+
     # Chromium for "<platform>_web" accounts (log in as a user). Empty = `chromium` on PATH.
     chromium_path: str = ""
 
