@@ -42,7 +42,7 @@ def fake_sites(monkeypatch):
             key = next((k for k in sorted(PAGES, key=len, reverse=True) if req.url.startswith(k)), None)
             if key is None:
                 return route.fulfill(status=404, body="")
-            return route.fulfill(status=200, content_type="text/html", body=PAGES[key])
+            return route.fulfill(status=200, content_type="text/html; charset=utf-8", body=PAGES[key])
         ctx.route("**/*", handle)
         return ctx
     monkeypatch.setattr(browser, "new_context", ctx_with_routes)
@@ -155,3 +155,31 @@ def test_mastodon_recipe(monkeypatch):
     res = make("mastodon_web", {**a.creds, "_account_id": a.id}).publish_social(SocialPost(text="hi", link_url="https://e.com/"))
     assert res.url == "https://mastodon.example/@me/1"
     assert sent["auth"] == "Bearer TOK" and sent["url"] == "https://mastodon.example/api/v1/statuses"
+
+
+def test_instagram_recipe_persian_ui_and_error_shot(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.publishers.base import PublishError
+    a = account("instagram_web")
+    logged_in(a, ".instagram.com")
+    img = tmp_path / "p.jpg"
+    img.write_bytes(b"\xff\xd8\xff\xe0fake")
+    PAGES["https://www.instagram.com/"] = """<svg aria-label="پست جدید" width=20 height=20 onclick="document.getElementById('d').style.display='block'"><rect width=20 height=20 /></svg>
+      <div role="dialog" id="d" style="display:none"><input type="file" onchange="document.getElementById('n').style.display='inline'">
+      <button id="n" style="display:none" onclick="this.dataset.c=(+this.dataset.c||0)+1; if(this.dataset.c==2){document.getElementById('cap').style.display='block';document.getElementById('s').style.display='inline'}">بعدی</button>
+      <div id="cap" aria-label="Write a caption..." contenteditable="true" style="display:none"></div>
+      <button id="s" style="display:none" onclick="fetch('/share',{method:'POST',body:document.getElementById('cap').innerText});document.getElementById('cap').remove()">اشتراک‌گذاری</button></div>"""
+    PAGES["https://www.instagram.com/share"] = "ok"
+    res = make("instagram_web", {"_account_id": a.id}).publish_social(
+        SocialPost(text="سلام", link_url="https://example.com/", image_url=str(img)))
+    assert res.url == "https://www.instagram.com/" and "سلام" in POSTED[0]["body"]
+    PAGES["https://www.instagram.com/"] = "<h1>nothing here</h1>"
+    PAGES["https://www.instagram.com/create/select/"] = "<h1>still nothing</h1>"
+    with pytest.raises(PublishError):
+        make("instagram_web", {"_account_id": a.id}).publish_social(
+            SocialPost(text="x", link_url="https://example.com/", image_url=str(img)))
+    with TestClient(app) as client:
+        assert "عکس صفحه در لحظه‌ی آخرین خطا" in client.get("/accounts").text
+        assert client.get(f"/accounts/{a.id}/error-shot").content[:2] == b"\xff\xd8"

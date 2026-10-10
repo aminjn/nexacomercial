@@ -13,7 +13,8 @@
   <tr><td>{{ a.id }}</td><td>{{ a.label }}</td><td>{{ a.kind }} <span class="muted">{{ 'مقاله' if a.category == 'article' else 'سوشیال' }}</span></td><td>{{ a.tag }}</td>
     <td class="ltr muted" style="font-size:12px">{% for k, v in r.creds.items() %}{{ k }}={{ v }}<br>{% endfor %}</td>
     <td>{{ a.min_hours_between }}h / {{ a.daily_limit }}</td><td>{{ a.published_count }}</td><td>{{ a.last_used_at|local }}</td>
-    <td>{% if not a.enabled %}<span class="muted">خاموش</span>{% elif a.status == 'paused' %}<span class="paused" title="{{ a.last_error }}">متوقف (خطا)</span><div class="muted" style="max-width:240px;font-size:12px">{{ a.last_error[:160] }}</div>{% else %}<span class="ok">فعال</span>{% endif %}</td>
+    <td>{% if not a.enabled %}<span class="muted">خاموش</span>{% elif a.status == 'paused' %}<span class="paused" title="{{ a.last_error }}">متوقف (خطا)</span><div class="muted" style="max-width:240px;font-size:12px">{{ a.last_error[:160] }}</div>{% else %}<span class="ok">فعال</span>{% endif %}
+      {% if r.shot %}<div><a href="/accounts/{{ a.id }}/error-shot" target="_blank" style="font-size:12px">عکس صفحه در لحظه‌ی آخرین خطا</a></div>{% endif %}</td>
     <td style="white-space:nowrap">
       <form class="inline" method="post" action="/accounts/{{ a.id }}/test" onsubmit="return confirm('یک پست واقعی منتشر می‌شود. ادامه؟')">
         <select name="site_id" style="width:auto">{% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select><button class="sec">تست</button></form>

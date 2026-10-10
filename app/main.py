@@ -348,7 +348,8 @@ def accounts_page(request: Request, tag: str = "", kind: str = "", edit: int = 0
         accounts = s.exec(q).all()
         tags = sorted({a.tag for a in s.exec(select(m.Account)).all() if a.tag})
         sites = s.exec(select(m.Site)).all()
-    rows = [{"a": a, "creds": masked(a.creds), "web": a.kind.endswith("_web"), "session": browser.has_session(a.id)}
+    rows = [{"a": a, "creds": masked(a.creds), "web": a.kind.endswith("_web"), "session": browser.has_session(a.id),
+             "shot": a.kind.endswith("_web") and browser.error_shot(a.id).exists()}
             for a in accounts]
     kinds = {k: {"category": REGISTRY[k].category, "fields": KIND_FIELDS.get(k, []), "guide": KIND_GUIDES.get(k, {})}
              for k in sorted(REGISTRY)}
@@ -439,6 +440,14 @@ def account_login_finish(account_id: int):
             s.add(acc)
             s.commit()
     return back("/accounts", "ورود ذخیره شد ✓ حالا «تست» را بزن")
+
+
+@app.get("/accounts/{account_id}/error-shot", dependencies=protected)
+def account_error_shot(account_id: int):
+    f = browser.error_shot(account_id)
+    if not f.exists():
+        raise HTTPException(404)
+    return Response(f.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/accounts/{account_id}/login/cancel", dependencies=protected)

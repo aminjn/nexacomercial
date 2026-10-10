@@ -63,6 +63,11 @@ def forget(account_id: int) -> None:
     _session_file(account_id).unlink(missing_ok=True)
 
 
+def error_shot(account_id: int):
+    """Screenshot of the page where the last browser publish failed."""
+    return settings.data_path / "sessions" / f"{int(account_id)}-error.jpg"
+
+
 def has_session(account_id: int) -> bool:
     return _session_file(account_id).exists()
 
@@ -283,8 +288,7 @@ def run_with_session(account_id: int, recipe: Callable[[Any], Any], timeout: flo
             return result
         except Exception:
             try:
-                shot = settings.data_path / "sessions" / f"{int(account_id)}-error.jpg"
-                ctx.pages[-1].screenshot(path=str(shot), type="jpeg", quality=60)
+                ctx.pages[-1].screenshot(path=str(error_shot(account_id)), type="jpeg", quality=60)
             except Exception:  # noqa: BLE001
                 pass
             raise

@@ -47,7 +47,7 @@ class WebPublisher(Publisher):
             raise
         except Exception as e:  # noqa: BLE001 — playwright timeouts etc.: say which page it was on
             raise PublishError(f"مرورگر: {type(e).__name__}: {str(e).splitlines()[0][:300]} "
-                               f"(عکس صفحه: data/sessions/{self.account_id}-error.jpg)") from e
+                               "(عکس صفحه: در صفحه‌ی اکانت‌ها «عکس صفحه در لحظه‌ی آخرین خطا»)") from e
 
     def goto(self, page: Any, url: str) -> None:
         page.goto(url, wait_until="domcontentloaded", timeout=60_000)
@@ -92,6 +92,8 @@ class WebPublisher(Publisher):
     @staticmethod
     def image_file(url: str) -> str:
         """Local path of the post image (our own uploads are read from disk)."""
+        if Path(url).is_file():
+            return url
         if "/media/" in url:
             f = settings.uploads_path / Path(url.rsplit("/media/", 1)[1]).name
             if f.exists():
@@ -223,28 +225,47 @@ class InstagramWeb(WebPublisher):
 
         def recipe(page: Any) -> PublishResult:
             self.goto(page, "https://www.instagram.com/")
-            for _ in range(2):  # "Turn on notifications?" / "Save login info?"
-                not_now = page.get_by_role("button", name=re.compile(r"^Not [Nn]ow$")).first
-                if not_now.is_visible():
-                    not_now.click()
-                    page.wait_for_timeout(800)
-            self.first(page, 'svg[aria-label="New post"]', 'svg[aria-label="Create"]').click()
-            page.wait_for_timeout(1500)
-            sub = page.locator('svg[aria-label="Post"]').first
-            if sub.is_visible():
-                sub.click()
+            self._dismiss(page)
+            # the "create" entry in the side menu; labels depend on the account's language
+            create = page.locator(", ".join(f'svg[aria-label="{x}"]' for x in IG_CREATE)).first
+            try:
+                create.wait_for(state="visible", timeout=20_000)
+                create.click()
+                page.wait_for_timeout(1500)
+                sub = page.locator(", ".join(f'svg[aria-label="{x}"]' for x in IG_POST)).first
+                if sub.is_visible():
+                    sub.click()
+            except Exception:  # noqa: BLE001 — menu not found: open the create dialog by its address
+                self.goto(page, "https://www.instagram.com/create/select/")
+            self._dismiss(page)
             self.first(page, 'input[type="file"]', state="attached").set_input_files(self.image_file(image))
             for _ in range(2):  # crop → filters → caption
-                self.button(page, "Next", timeout=60_000).click()
+                self.button(page, re.compile(r"^(Next|بعدی)$"), timeout=60_000).click()
                 page.wait_for_timeout(1500)
             caption = self.first(page, 'div[aria-label="Write a caption..."][contenteditable="true"]',
                                  'div[role="dialog"] [contenteditable="true"]')
             self.type_into(page, caption, post.render(self.max_chars))
-            self.button(page, "Share").click()
-            self.first(page, 'text=/Your post has been shared|Post shared|Reel shared/', timeout=120_000)
+            self.button(page, re.compile(r"^(Share|اشتراک‌گذاری|اشتراک گذاری|هم‌رسانی)$")).click()
+            caption.wait_for(state="detached", timeout=120_000)
             return PublishResult(url="https://www.instagram.com/")
 
         return self.run(recipe)
+
+    @staticmethod
+    def _dismiss(page: Any) -> None:
+        """Close "Turn on notifications?" / "Save login info?" popups."""
+        for _ in range(2):
+            not_now = page.get_by_role("button", name=re.compile(r"^(Not [Nn]ow|اکنون نه|الان نه|بعداً)$")).first
+            try:
+                if not_now.is_visible():
+                    not_now.click()
+                    page.wait_for_timeout(800)
+            except Exception:  # noqa: BLE001
+                return
+
+
+IG_CREATE = ("New post", "Create", "پست جدید", "ایجاد", "ساختن")
+IG_POST = ("Post", "پست")
 
 
 # ---------------------------------------------------------------- Threads
