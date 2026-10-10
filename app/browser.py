@@ -73,6 +73,63 @@ def last_shot(account_id: int):
     return settings.data_path / "sessions" / f"{int(account_id)}-last.jpg"
 
 
+_SAMESITE = {"strict": "Strict", "lax": "Lax", "none": "None", "no_restriction": "None"}
+
+
+def parse_cookies(text: str) -> list[dict[str, Any]]:
+    """Cookies exported from your own browser: Cookie-Editor / EditThisCookie JSON, or a Netscape cookies.txt."""
+    import json
+    text = (text or "").strip()
+    out: list[dict[str, Any]] = []
+    if text.startswith(("[", "{")):
+        try:
+            data = json.loads(text)
+        except ValueError as e:
+            raise BrowserError("متن کوکی JSON درستی نیست؛ دوباره از افزونه Export → JSON بگیر") from e
+        if isinstance(data, dict):
+            data = data.get("cookies", [])
+        for c in data:
+            if not isinstance(c, dict) or not c.get("name") or not c.get("domain"):
+                continue
+            exp = c.get("expirationDate", c.get("expires", -1))
+            ck = {"name": str(c["name"]), "value": str(c.get("value", "")), "domain": str(c["domain"]),
+                  "path": str(c.get("path") or "/"), "expires": float(exp) if exp not in (None, "") else -1,
+                  "httpOnly": bool(c.get("httpOnly")), "secure": bool(c.get("secure"))}
+            ss = _SAMESITE.get(str(c.get("sameSite") or "").lower())
+            if ss:
+                ck["sameSite"] = ss
+                if ss == "None":
+                    ck["secure"] = True
+            out.append(ck)
+    else:
+        for line in text.splitlines():
+            httponly = line.startswith("#HttpOnly_")
+            if httponly:
+                line = line[len("#HttpOnly_"):]
+            parts = line.split("\t")
+            if line.startswith("#") or len(parts) < 7:
+                continue
+            domain, _, path, secure, exp, name, value = parts[:7]
+            out.append({"name": name, "value": value.strip(), "domain": domain, "path": path or "/",
+                        "expires": float(exp) if exp.strip() not in ("", "0") else -1,
+                        "httpOnly": httponly, "secure": secure.upper() == "TRUE"})
+    if not out:
+        raise BrowserError("هیچ کوکی‌ای در این متن پیدا نشد")
+    return out
+
+
+def import_cookies(account_id: int, text: str) -> int:
+    """Log in with cookies from your own browser (for sites like Google that refuse to log in on the server)."""
+    new = parse_cookies(text)
+    state = load_state(account_id) or {"cookies": [], "origins": []}
+    key = lambda c: (c["name"], c["domain"].lstrip("."), c.get("path", "/"))  # noqa: E731
+    fresh = {key(c) for c in new}
+    state["cookies"] = [c for c in state.get("cookies", []) if key(c) not in fresh] + new
+    state.setdefault("origins", [])
+    save_state(account_id, state)
+    return len(new)
+
+
 def has_session(account_id: int) -> bool:
     return _session_file(account_id).exists()
 

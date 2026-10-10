@@ -298,3 +298,21 @@ def test_site_form_tags_and_page_rows_in_a_real_browser():
     assert got["anchors"] == "املاک تهران"
     assert got["pages"] == ("https://melkjet.com/search\n"
                             "https://melkjet.com/search?type=rent | اجاره آپارتمان, رهن | اجاره آپارتمان در تهران")
+
+
+def test_import_cookies_from_own_browser(tmp_path, monkeypatch):
+    import json
+
+    from app import browser
+    monkeypatch.setattr(browser, "_session_file", lambda aid: tmp_path / f"{aid}.bin")
+    n = browser.import_cookies(9, json.dumps([
+        {"name": "SID", "value": "abc", "domain": ".google.com", "path": "/", "expirationDate": 1999999999.5,
+         "httpOnly": True, "secure": True, "sameSite": "no_restriction"},
+        {"name": "x", "value": "1", "domain": "www.blogger.com", "sameSite": "lax"}]))
+    assert n == 2
+    st = browser.load_state(9)
+    assert st["cookies"][0]["sameSite"] == "None" and st["cookies"][0]["expires"] == 1999999999.5
+    assert st["cookies"][1]["expires"] == -1 and st["origins"] == []
+    browser.import_cookies(9, ".google.com\tTRUE\t/\tTRUE\t0\tSID\tnew")
+    sids = [c for c in browser.load_state(9)["cookies"] if c["name"] == "SID"]
+    assert len(sids) == 1 and sids[0]["value"] == "new"

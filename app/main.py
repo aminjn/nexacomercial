@@ -875,6 +875,27 @@ def account_login_finish(account_id: int):
     return back("/accounts", "ورود ذخیره شد ✓ حالا «تست» را بزن")
 
 
+@app.post("/accounts/{account_id}/login/cookies", dependencies=protected)
+async def account_login_cookies(account_id: int, request: Request):
+    _web_account(account_id)
+    f = await request.form()
+    text = str(f.get("cookies") or "")
+    if f.get("file") and hasattr(f["file"], "read"):
+        text = (await f["file"].read()).decode("utf-8-sig") or text
+    try:
+        n = browser.import_cookies(account_id, text)
+    except Exception as e:  # noqa: BLE001
+        return back(f"/accounts/{account_id}/login", f"کوکی ذخیره نشد: {e}")
+    browser.login_cancel(account_id)
+    with m.session() as s:
+        acc = s.get(m.Account, account_id)
+        if acc:
+            acc.status, acc.fail_count, acc.last_error = "ok", 0, ""
+            s.add(acc)
+            s.commit()
+    return back("/accounts", f"{n} کوکی ذخیره شد ✓ حالا «تست» را بزن")
+
+
 @app.get("/accounts/{account_id}/{which}-shot", dependencies=protected)
 def account_shot(account_id: int, which: str):
     if which not in ("error", "last"):
