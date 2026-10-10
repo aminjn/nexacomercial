@@ -348,3 +348,14 @@ def test_ready_posts_rotate_with_own_caption_and_image():
     assert "کپشن خودم" not in second.body_preview  # second ready post: AI text, its own image
     with m.session() as s:
         assert [p.used_count for p in sorted(s.exec(m.select(m.MediaPost)).all(), key=lambda p: p.id)] == [1, 1]
+
+
+def test_instagram_and_homepage_urls_are_not_link_checked(monkeypatch):
+    calls = []
+    monkeypatch.setattr(engine, "check_backlink", lambda url, link: calls.append(url) or (True, ""))
+    with m.session() as s:
+        for kind, url in (("instagram_web", "https://www.instagram.com/"), ("linkedin_web", "https://www.linkedin.com/"),
+                          ("telegraph", "https://telegra.ph/my-post-01")):
+            s.add(m.Publication(site_id=1, account_id=1, account_kind=kind, url=url, link_url="https://example.com"))
+        s.commit()
+    assert engine.verify_links(max_age_hours=0) == 1 and calls == ["https://telegra.ph/my-post-01"]

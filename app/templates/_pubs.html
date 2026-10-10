@@ -5,6 +5,6 @@
     <td>{{ p.account_label }} <span class="muted">({{ p.account_kind }})</span></td><td>{{ 'مقاله' if p.category == 'article' else 'پست' }}</td>
     <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title[:70] }}</a>{% else %}<span title="{{ p.body_preview }}">{{ p.title[:70] }}</span>{% endif %}</td>
     <td class="{{ p.status }}">{{ p.status }}{% if p.error %}<div class="muted" style="max-width:320px">{{ p.error[:200] }}</div>{% endif %}</td>
-    <td>{% if p.link_found is none %}<span class="muted">؟</span>{% elif p.link_found %}<span class="ok">زنده {{ p.link_rel or 'dofollow' }}</span>{% else %}<span class="error">پیدا نشد {{ p.link_rel }}</span>{% endif %}</td></tr>
+    <td>{% if p.status == 'ok' and not checkable(p) %}<span class="muted" title="{{ 'در کپشن اینستاگرام لینک کلیک‌پذیر نیست؛ برای دیده شدن و فروش است، نه سئو' if p.account_kind.startswith('instagram') else 'آدرس خود پست معلوم نیست' }}">— {{ 'بدون لینک (اینستاگرام)' if p.account_kind.startswith('instagram') else 'قابل بررسی نیست' }}</span>{% elif p.link_found is none %}<span class="muted">؟</span>{% elif p.link_found %}<span class="ok">زنده {{ p.link_rel or 'dofollow' }}</span>{% else %}<span class="error">پیدا نشد {{ p.link_rel }}</span>{% endif %}</td></tr>
   {% else %}<tr><td colspan="7" class="muted">چیزی منتشر نشده.</td></tr>{% endfor %}
 </table>

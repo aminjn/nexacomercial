@@ -279,6 +279,16 @@ def test_account(account_id: int, site_id: int | None = None, *, dry_run: bool =
     return publish(site, acc, dry_run=dry_run)
 
 
+NO_LINK_KINDS = ("instagram", "instagram_web")  # links in captions are plain text there
+
+
+def checkable(p: m.Publication) -> bool:
+    """Whether the published page can be checked for our link: not Instagram, and a real post address
+    (browser accounts that only know the site's home page can't be checked)."""
+    from urllib.parse import urlsplit
+    return p.account_kind not in NO_LINK_KINDS and urlsplit(p.url).path.strip("/") != ""
+
+
 def verify_links(max_age_hours: float | None = None) -> int:
     """Re-check every published item's backlink (found? dofollow?)."""
     max_age_hours = settings.linkcheck_hours if max_age_hours is None else max_age_hours
@@ -287,7 +297,7 @@ def verify_links(max_age_hours: float | None = None) -> int:
     with m.session() as s:
         rows = s.exec(select(m.Publication).where(m.Publication.status == "ok", m.Publication.url != "")).all()
         for p in rows:
-            if p.checked_at and p.checked_at > cutoff:
+            if (p.checked_at and p.checked_at > cutoff) or not checkable(p):
                 continue
             p.link_found, p.link_rel = check_backlink(p.url, p.link_url)
             p.checked_at = m.utcnow()

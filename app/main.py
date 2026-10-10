@@ -62,6 +62,7 @@ def local(t: dt.datetime | None) -> str:
 
 
 templates.env.filters["local"] = local
+templates.env.globals["checkable"] = engine.checkable
 
 
 def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
