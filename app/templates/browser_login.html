@@ -27,19 +27,7 @@
   <form method="post" action="/accounts/{{ acc.id }}/login/finish"><button>تمام شد، ورود ذخیره شود</button></form>
   <form method="post" action="/accounts/{{ acc.id }}/login/cancel"><button class="sec">لغو</button></form>
 </div>
-<details style="margin-top:14px"{% if 'google' in acc.kind or 'blogger' in acc.kind %} open{% endif %}><summary><b>این سایت ورود را قبول نمی‌کند؟ (مثلاً گوگل: «Couldn’t sign you in») ← ورود با کوکی مرورگر خودت</b></summary>
-<ol class="muted" style="line-height:2">
-  <li>در کروم خودت افزونه‌ی <b>Cookie-Editor</b> را از Chrome Web Store نصب کن.</li>
-  <li>در کروم خودت وارد همین سایت شو (مثلاً blogger.com) تا داخل حسابت باشی.</li>
-  <li>روی آیکون Cookie-Editor بزن ← <b>Export</b> ← <b>JSON</b> (کپی می‌شود).</li>
-  <li>این‌جا در کادر زیر Paste کن و «ذخیره‌ی کوکی‌ها» را بزن. برای گوگل یک بار هم در accounts.google.com همین کار را بکن و آن را هم این‌جا بچسبان.</li>
-</ol>
-<form method="post" action="/accounts/{{ acc.id }}/login/cookies">
-  <textarea name="cookies" class="ltr" rows="5" style="width:100%" placeholder='[{"name": "...", "value": "...", "domain": ".google.com", ...}]'></textarea>
-  <button>ذخیره‌ی کوکی‌ها</button>
-</form>
-<p class="muted" style="font-size:12px">کوکی‌ها مثل رمز هستند؛ به کسی نده. رمزنگاری‌شده روی سرور خودت ذخیره می‌شوند. اگر در کروم خودت از حساب Log out کنی، این کوکی‌ها هم باطل می‌شوند؛ پس فقط پنجره را ببند.</p>
-</details>
+<p class="muted">این سایت ورود را قبول نمی‌کند (مثلاً گوگل: «Couldn’t sign you in» یا دکمه‌ها کار نمی‌کنند)؟ ← <a href="/accounts/{{ acc.id }}/cookies">ورود با کوکی مرورگر خودت</a></p>
 <p class="muted" style="font-size:12px">رمزت ذخیره نمی‌شود؛ فقط کوکی‌های ورود (رمزنگاری‌شده) نگه داشته می‌شوند. اگر ۱۵ دقیقه کاری نکنی، این پنجره بسته می‌شود.</p>
 </div>
 

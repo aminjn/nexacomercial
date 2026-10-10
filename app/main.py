@@ -875,6 +875,11 @@ def account_login_finish(account_id: int):
     return back("/accounts", "ورود ذخیره شد ✓ حالا «تست» را بزن")
 
 
+@app.get("/accounts/{account_id}/cookies", response_class=HTMLResponse, dependencies=protected)
+def account_cookies_page(request: Request, account_id: int):
+    return render(request, "cookie_login.html", acc=_web_account(account_id))
+
+
 @app.post("/accounts/{account_id}/login/cookies", dependencies=protected)
 async def account_login_cookies(account_id: int, request: Request):
     _web_account(account_id)
@@ -885,7 +890,7 @@ async def account_login_cookies(account_id: int, request: Request):
     try:
         n = browser.import_cookies(account_id, text)
     except Exception as e:  # noqa: BLE001
-        return back(f"/accounts/{account_id}/login", f"کوکی ذخیره نشد: {e}")
+        return back(f"/accounts/{account_id}/cookies", f"کوکی ذخیره نشد: {e}")
     browser.login_cancel(account_id)
     with m.session() as s:
         acc = s.get(m.Account, account_id)

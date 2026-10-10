@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card"><h2>ورود با کوکی — {{ acc.label }} <span class="muted">({{ acc.kind }})</span></h2>
+<p class="muted">برای سایت‌هایی که ورود روی سرور را قبول نمی‌کنند (گوگل، Medium و ...): در کروم خودت وارد شو و «کلید ورود» را این‌جا بده.</p>
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+<ol class="muted" style="line-height:2">
+  <li>در کروم خودت افزونه‌ی <b>Cookie-Editor</b> را از Chrome Web Store نصب کن.</li>
+  <li>در کروم خودت وارد همین سایت شو (مثلاً blogger.com) تا داخل حسابت باشی.</li>
+  <li>روی آیکون Cookie-Editor بزن ← <b>Export</b> ← <b>JSON</b> (کپی می‌شود).</li>
+  <li>این‌جا در کادر زیر Paste کن و «ذخیره‌ی کوکی‌ها» را بزن. برای گوگل یک بار هم در accounts.google.com همین کار را بکن و آن را هم این‌جا بچسبان.</li>
+</ol>
+<form method="post" action="/accounts/{{ acc.id }}/login/cookies">
+  <textarea name="cookies" class="ltr" rows="5" style="width:100%" placeholder='[{"name": "...", "value": "...", "domain": ".google.com", ...}]'></textarea>
+  <button>ذخیره‌ی کوکی‌ها</button>
+</form>
+<p class="muted" style="font-size:12px">کوکی‌ها مثل رمز هستند؛ به کسی نده. رمزنگاری‌شده روی سرور خودت ذخیره می‌شوند. اگر در کروم خودت از حساب Log out کنی، این کوکی‌ها هم باطل می‌شوند؛ پس فقط پنجره را ببند.</p>
+<p><a href="/accounts">بازگشت به اکانت‌ها</a></p>
+</div>
+{% endblock %}

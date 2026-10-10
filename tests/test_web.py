@@ -316,3 +316,20 @@ def test_import_cookies_from_own_browser(tmp_path, monkeypatch):
     browser.import_cookies(9, ".google.com\tTRUE\t/\tTRUE\t0\tSID\tnew")
     sids = [c for c in browser.load_state(9)["cookies"] if c["name"] == "SID"]
     assert len(sids) == 1 and sids[0]["value"] == "new"
+
+
+def test_cookie_login_page():
+    from fastapi.testclient import TestClient
+
+    from app import models as m
+    from app.main import app
+    with m.session() as s:
+        a = m.Account(kind="medium_web", label="med", category="article")
+        a.creds = {}
+        s.add(a)
+        s.commit()
+        aid = a.id
+    with TestClient(app) as client:
+        r = client.get(f"/accounts/{aid}/cookies")
+        assert r.status_code == 200 and "Cookie-Editor" in r.text
+        assert "ورود با کوکی" in client.get("/accounts").text
