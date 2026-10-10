@@ -1,6 +1,7 @@
 """Article / blog destinations — each gives a permanent page containing the backlink."""
 from __future__ import annotations
 
+import re
 import time
 import xmlrpc.client
 from html.parser import HTMLParser
@@ -68,14 +69,21 @@ class Telegraph(Publisher):
     kind = "telegraph"
     API = "https://api.telegra.ph"
 
+    def author_url(self) -> str:
+        """Telegraph only takes a full http(s) address here: "melkjet.ir" → "https://melkjet.ir", anything else is dropped."""
+        u = (self.opt("author_url") or "").strip()
+        if u and "://" not in u:
+            u = "https://" + u
+        return u if re.fullmatch(r"https?://[^\s/]+\.[^\s]+", u) else ""
+
     def _token(self, c: Any) -> str:
         tok = self.opt("access_token")
         if tok:
             return tok
         r = c.post(f"{self.API}/createAccount", data={
             "short_name": self.opt("short_name", "author"),
-            "author_name": self.opt("author_name", ""),
-            "author_url": self.opt("author_url", ""),
+            "author_name": (self.opt("author_name") or "")[:128],
+            "author_url": self.author_url(),
         })
         d = self.check(r)
         if not d.get("ok"):
@@ -86,15 +94,17 @@ class Telegraph(Publisher):
     def publish_article(self, article: Article) -> PublishResult:
         with self.http() as c:
             token = self._token(c)
-            r = c.post(f"{self.API}/createPage", json={
+            page = {
                 "access_token": token,
                 "title": article.title[:256],
-                "author_name": self.opt("author_name", ""),
-                "author_url": self.opt("author_url", ""),
+                "author_name": (self.opt("author_name") or "")[:128],
+                "author_url": self.author_url(),
                 "content": html_to_telegraph_nodes(article.body_html),
                 "return_content": False,
-            })
-            d = self.check(r)
+            }
+            d = self.check(c.post(f"{self.API}/createPage", json=page))
+            if not d.get("ok") and "AUTHOR_URL" in str(d.get("error")):  # publish without the author link
+                d = self.check(c.post(f"{self.API}/createPage", json={**page, "author_url": ""}))
             if not d.get("ok"):
                 raise PublishError(f"telegraph createPage: {d}")
             return PublishResult(url=d["result"]["url"], external_id=d["result"]["path"], raw=d)

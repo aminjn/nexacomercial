@@ -118,3 +118,23 @@ def test_bluesky_facets_byte_offsets():
 def test_missing_option_is_reported():
     with pytest.raises(Exception, match="missing option"):
         make("devto", {}).publish_article(ART)
+
+
+def test_telegraph_author_url_fixed_or_dropped(monkeypatch):
+    sent = []
+
+    def handler(req: httpx.Request):
+        if req.url.path == "/createAccount":
+            sent.append(dict(httpx.QueryParams(req.content.decode())))
+            return httpx.Response(200, json={"ok": True, "result": {"access_token": "tok"}})
+        body = json.loads(req.content)
+        sent.append(body)
+        if body["author_url"]:
+            return httpx.Response(200, json={"ok": False, "error": "AUTHOR_URL_INVALID"})
+        return httpx.Response(200, json={"ok": True, "result": {"url": "https://telegra.ph/T-1", "path": "T-1"}})
+
+    monkeypatch.setattr(Publisher, "http", _mock(handler))
+    assert make("telegraph", {"author_url": "ملک جت"}).author_url() == ""
+    res = make("telegraph", {"author_url": "melkjet.ir"}).publish_article(ART)
+    assert sent[0]["author_url"] == "https://melkjet.ir" and sent[-1]["author_url"] == ""
+    assert res.url == "https://telegra.ph/T-1"
