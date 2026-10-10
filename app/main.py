@@ -180,11 +180,9 @@ async def settings_save(request: Request):
         "utm_enabled": bool(f.get("utm_enabled")),
         "utm_on_articles": bool(f.get("utm_on_articles")),
         "click_redirect": bool(f.get("click_redirect")),
-        "ga_measurement_id": f.get("ga_measurement_id", "").strip(),
-        "ga_property_id": f.get("ga_property_id", "").strip().removeprefix("properties/"),
     }
     # secrets: empty field = keep; "clear" checkbox = remove
-    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy", "v2ray_link", "ga_api_secret", "ga_service_account"):
+    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy", "v2ray_link", "ga_service_account"):
         v = f.get(key, "").strip()
         if v or f.get(f"clear_{key}"):
             values[key] = v
@@ -199,14 +197,10 @@ async def settings_save(request: Request):
             json.loads(values["ga_service_account"])["client_email"]
         except (ValueError, KeyError, TypeError):
             return back("/settings?at=ga#ga", "JSON سرویس‌اکانت گوگل نامعتبر است؛ کل محتوای فایل .json را بگذار")
-    ga_changed = any(k in values and values[k] != getattr(settings, k) for k in ("ga_property_id", "ga_service_account"))
+    ga_changed = bool(values.get("ga_service_account")) and values["ga_service_account"] != settings.ga_service_account
     runtime.save(values)
-    if ga_changed and ga.configured():  # the goal is created automatically as soon as GA is connected
-        try:
-            msg = ga.ensure_key_event()
-        except Exception as e:  # noqa: BLE001
-            msg = f"گوگل آنالیتیکس: {e}"
-        return back("/settings?at=ga#ga", "تنظیمات ذخیره شد — " + msg)
+    if ga_changed:  # the goal is created automatically in every site's Analytics as soon as GA is connected
+        return back("/settings?at=ga#ga", "تنظیمات ذخیره شد — " + _ensure_goals())
     err = v2ray.sync()
     if err or "v2ray_link" in values:
         return back(V2RAY_PAGE, "تنظیمات ذخیره شد" + (f" — ولی v2ray اجرا نشد: {err}" if err else
@@ -286,7 +280,11 @@ def _site_from_form(f: dict[str, str], site: m.Site | None = None) -> m.Site:
     pages = [{"url": u} for u in f.get("pages", "").split()]
     data = dict(name=f["name"].strip(), url=f["url"].strip(), language=f.get("language", "fa").strip() or "fa",
                 niche=f.get("niche", ""), description=f.get("description", ""), keywords=_list(f.get("keywords", "")),
-                anchors=_list(f.get("anchors", "")), pages=pages, style=f.get("style", ""), enabled=bool(f.get("enabled")))
+                anchors=_list(f.get("anchors", "")), pages=pages, style=f.get("style", ""), enabled=bool(f.get("enabled")),
+                ga_measurement_id=f.get("ga_measurement_id", "").strip(),
+                ga_property_id=f.get("ga_property_id", "").strip().removeprefix("properties/"))
+    if f.get("ga_api_secret", "").strip() or f.get("clear_ga_api_secret"):  # empty = keep the stored secret
+        data["ga_api_secret"] = f.get("ga_api_secret", "").strip()
     if site is None:
         return m.Site(**data)
     for k, v in data.items():
@@ -336,13 +334,21 @@ async def site_save(request: Request):
             return back("/sites", str(e))
     with m.session() as s:
         site = s.get(m.Site, int(f["id"])) if f.get("id") else None
+        old_property = site.ga_property_id if site else ""
         site = _site_from_form(f, site)
         if new_image or f.get("remove_image"):
             delete_image(site.image_url or "")
             site.image_url = new_image
         s.add(site)
         s.commit()
-    return back("/sites", "ذخیره شد")
+        s.refresh(site)
+    msg = "ذخیره شد"
+    if site.ga_property_id and site.ga_property_id != old_property and ga.configured():  # goal in this site's GA
+        try:
+            msg += " — " + ga.ensure_key_event(site.ga_property_id)
+        except Exception as e:  # noqa: BLE001
+            msg += f" — گوگل آنالیتیکس: {e}"
+    return back("/sites", msg)
 
 
 @app.post("/sites/import", dependencies=protected)
@@ -389,9 +395,10 @@ def tracked_redirect(code: str, request: Request):
                           platform=stats.base_kind(pub.account_kind), referer=request.headers.get("referer", "")[:300]))
             s.commit()
             campaign = s.get(m.Campaign, pub.campaign_id) if pub.campaign_id else None
+            mid, secret, _ = ga.site_ids(s.get(m.Site, pub.site_id))
             ga.send_click({"campaign": tracking.slug(campaign.name) if campaign else "manual",
                            "source": stats.base_kind(pub.account_kind), "medium": pub.category,
-                           "content": code, "publication_id": pub.id})
+                           "content": code, "publication_id": pub.id}, mid, secret)
     return RedirectResponse(target, status_code=302)
 
 
@@ -418,24 +425,39 @@ def reports_page(request: Request, days: int = 30):
         r["week"] += c.created_at >= week
         r["platforms"].setdefault(c.platform, {"pubs": 0, "clicks": 0})["clicks"] += 1
     top = sorted((p for p in pubs if p.clicks), key=lambda p: p.clicks, reverse=True)[:20]
-    ga_rows, ga_error = [], ""
-    if ga.configured():
+    ga_reports = []  # one Google Analytics report per site that has its own property
+    for site in sites.values():
+        pid = ga.site_ids(site)[2]
+        if not (pid and ga.configured()):
+            continue
         try:
-            ga_rows = ga.campaign_report(days)
+            ga_reports.append({"site": site, "rows": ga.campaign_report(pid, days), "error": ""})
         except Exception as e:  # noqa: BLE001
-            ga_error = str(e)
+            ga_reports.append({"site": site, "rows": [], "error": str(e)})
     return render(request, "reports.html", rows=rows, campaigns=campaigns, sites=sites, days=days, top=top,
-                  names=PLATFORM_NAMES, ga_rows=ga_rows, ga_error=ga_error, ga_on=ga.configured(),
-                  total_clicks=len(clicks))
+                  names=PLATFORM_NAMES, ga_reports=ga_reports, ga_on=ga.configured(), total_clicks=len(clicks))
+
+
+def _ensure_goals() -> str:
+    """Create the nexa_click goal in the Analytics property of every site that has one."""
+    if not ga.configured():
+        return "اول در تنظیمات JSON سرویس‌اکانت گوگل را بگذار"
+    with m.session() as s:
+        sites = [x for x in s.exec(select(m.Site)).all() if ga.site_ids(x)[2]]
+    if not sites:
+        return "هیچ سایتی Property ID گوگل آنالیتیکس ندارد؛ در صفحه‌ی ویرایش هر سایت واردش کن"
+    out = []
+    for site in sites:
+        try:
+            out.append(f"{site.name}: {ga.ensure_key_event(ga.site_ids(site)[2])}")
+        except Exception as e:  # noqa: BLE001
+            out.append(f"{site.name}: {e}")
+    return " | ".join(out)
 
 
 @app.post("/ga/key-event", dependencies=protected)
 def ga_key_event():
-    try:
-        msg = ga.ensure_key_event()
-    except Exception as e:  # noqa: BLE001
-        msg = f"گوگل آنالیتیکس: {e}"
-    return back("/settings?at=ga#ga", msg)
+    return back("/settings?at=ga#ga", _ensure_goals())
 
 
 # ---------------------------------------------------------------- one site: summary / instagram / publications / posts

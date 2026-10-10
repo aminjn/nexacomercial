@@ -36,6 +36,10 @@ class Site(SQLModel, table=True):
     image_url: str = ""  # used by Instagram / Pinterest
     style: str = ""  # tone / style guidance appended to prompts
     enabled: bool = True
+    # this site's own Google Analytics 4 (clicks are sent there, the goal is created there)
+    ga_measurement_id: str = ""
+    ga_api_secret: str = ""
+    ga_property_id: str = ""
 
 
 class MediaPost(SQLModel, table=True):

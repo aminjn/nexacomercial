@@ -95,23 +95,18 @@
 </div>
 <small class="help">UTM: <code>utm_source</code> = پلتفرم، <code>utm_medium</code> = social / article، <code>utm_campaign</code> = اسم کمپین، <code>utm_content</code> = کد همان پست. با این کار گوگل آنالیتیکس هر کمپین را جدا گزارش می‌کند.
 لینک کوتاه (<code class="ltr">{{ settings.public_url or 'آدرس عمومی داشبورد' }}/r/...</code>) هر کلیک را در «گزارش‌ها» می‌شمارد و بازدیدکننده را به سایت می‌فرستد؛ فقط برای پست‌ها، نه مقاله‌ها، تا ارزش سئوی بک‌لینک حفظ شود. {% if not settings.public_url %}<b>برای لینک کوتاه «آدرس عمومی این داشبورد» را بالا پر کن.</b>{% endif %}</small>
-<div class="grid" style="margin-top:10px">
-  <label><span>Measurement ID</span><input name="ga_measurement_id" class="ltr" value="{{ settings.ga_measurement_id }}" placeholder="G-XXXXXXXXXX">
-    <small class="help">GA4 ← Admin ← Data streams ← استریم سایت ← Measurement ID</small></label>
-  <label><span>Measurement Protocol API secret</span><input name="ga_api_secret" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_ga_secret else '' }}">
-    <small class="help">همان صفحه‌ی استریم ← Measurement Protocol API secrets ← Create. با این، هر کلیک به‌عنوان رویداد <code>nexa_click</code> به GA هم فرستاده می‌شود.</small>
-    {% if has_ga_secret %}<span class="check"><input type="checkbox" name="clear_ga_api_secret" value="1"> حذف</span>{% endif %}</label>
-  <label><span>Property ID (عدد)</span><input name="ga_property_id" class="ltr" value="{{ settings.ga_property_id }}" placeholder="123456789">
-    <small class="help">GA4 ← Admin ← Property details ← PROPERTY ID</small></label>
-</div>
-<label><span>JSON سرویس‌اکانت گوگل (برای ساخت خودکار هدف و گرفتن گزارش)</span>
-  <textarea name="ga_service_account" class="ltr" rows="3" spellcheck="false" placeholder="{{ 'ذخیره شده: ' ~ ga_sa_email ~ ' — خالی = بدون تغییر' if has_ga_sa else '{ &quot;type&quot;: &quot;service_account&quot;, ... }' }}"></textarea>
+<div class="msg" style="margin-top:10px">لازم نیست برای هیچ لینکی کاری بکنی: هر لینک در هر پلتفرم خودکار برچسب و کد جدا می‌گیرد و جدا شمرده می‌شود.
+گوگل آنالیتیکس هم برای هر سایت جداست؛ Measurement ID و Property ID هر سایت را در صفحه‌ی <a href="/sites">سایت‌ها</a> ← ویرایش همان سایت وارد کن.
+این‌جا فقط یک بار سرویس‌اکانت گوگل را بگذار تا هدف در آنالیتیکس همه‌ی سایت‌ها خودکار ساخته شود و گزارششان بیاید.</div>
+<label><span>JSON سرویس‌اکانت گوگل (یک بار، برای همه‌ی سایت‌ها)</span>
+  <textarea name="ga_service_account" class="ltr" rows="3" spellcheck="false" placeholder="{{ 'ذخیره شده: ' ~ ga_sa_email ~ ' — خالی = بدون تغییر' if has_ga_sa else 'کل محتوای فایل .json سرویس‌اکانت را این‌جا بچسبان' }}"></textarea>
   {% if has_ga_sa %}<span class="check"><input type="checkbox" name="clear_ga_service_account" value="1"> حذف</span>{% endif %}</label>
 <details class="guide"><summary>سرویس‌اکانت را چطور بسازم؟ (یک بار، ۵ دقیقه)</summary><ol>
   <li>console.cloud.google.com ← یک پروژه ← APIs & Services ← Library ← «Google Analytics Admin API» و «Google Analytics Data API» را Enable کن.</li>
   <li>IAM & Admin ← Service Accounts ← Create service account ← اسم ← Done. روی آن بزن ← Keys ← Add key ← JSON ← فایل دانلود می‌شود.</li>
-  <li>در GA4 ← Admin ← Property access management ← + ← ایمیل سرویس‌اکانت (داخل فایل، <code>client_email</code>) با نقش <b>Editor</b>.</li>
-  <li>کل محتوای فایل JSON را در کادر بالا بگذار، Property ID را بنویس و ذخیره کن. هدف (Key event) <code>nexa_click</code> خودکار ساخته می‌شود.</li>
+  <li>کل محتوای فایل JSON را در کادر بالا بگذار و ذخیره کن.</li>
+  <li>در گوگل آنالیتیکسِ <b>هر سایت</b>: Admin ← Property access management ← + ← ایمیل سرویس‌اکانت (<code>client_email</code> داخل فایل) با نقش <b>Editor</b>. همان یک ایمیل برای همه‌ی سایت‌ها کافی است.</li>
+  <li>در صفحه‌ی ویرایش هر سایت Property ID آن را بنویس و ذخیره کن؛ هدف (Key event) <code>nexa_click</code> خودکار در آنالیتیکس همان سایت ساخته می‌شود.</li>
 </ol></details>
 </div>
 
@@ -120,7 +115,7 @@
 <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
 <form method="post" action="/llm-test?next=/settings"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
 <form method="post" action="/v2ray-test"><button class="sec">تست اتصال v2ray</button></form>
-<form method="post" action="/ga/key-event"><button class="sec">ساخت هدف در گوگل آنالیتیکس</button></form>
+<form method="post" action="/ga/key-event"><button class="sec">ساخت هدف در آنالیتیکس همه‌ی سایت‌ها</button></form>
 <form method="post" action="/v2ray-install"><button class="sec">{{ 'به‌روزرسانی Xray' if v2.binary else 'نصب Xray' }} (دانلود از گیت‌هاب)</button></form>
 </div>
 <details class="guide" style="margin-top:10px" {{ 'open' if not v2.binary }}><summary>دانلود Xray از سرور نمی‌شود؟ فایل را خودت آپلود کن</summary>

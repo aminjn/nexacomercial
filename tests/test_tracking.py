@@ -31,8 +31,8 @@ def test_social_post_gets_utm_and_counting_short_link(monkeypatch):
         return httpx.Response(200, json={"ok": True, "result": {"message_id": 5, "chat": {"username": "c"}}})
     monkeypatch.setattr(Publisher, "http", _mock(handler))
     ga_events = []
-    monkeypatch.setattr(ga, "send_click", lambda params: ga_events.append(params))
-    site = add_site()
+    monkeypatch.setattr(ga, "send_click", lambda params, mid, secret: ga_events.append((params, mid, secret)))
+    site = add_site(ga_measurement_id="G-SITE1", ga_api_secret="sec1")
     camp = add_campaign(site)
     with m.session() as s:
         camp = s.get(m.Campaign, camp.id)
@@ -56,8 +56,8 @@ def test_social_post_gets_utm_and_counting_short_link(monkeypatch):
     with m.session() as s:
         assert s.get(m.Publication, rec.id).clicks == 1  # the bot preview did not count
         assert len(s.exec(m.select(m.Click)).all()) == 1
-    assert ga_events == [{"campaign": "کمپین-پاییز", "source": "telegram", "medium": "social",
-                          "content": rec.track_code, "publication_id": rec.id}]
+    assert ga_events == [({"campaign": "کمپین-پاییز", "source": "telegram", "medium": "social",
+                           "content": rec.track_code, "publication_id": rec.id}, "G-SITE1", "sec1")]  # this site's GA
 
 
 def test_article_backlink_is_tagged_but_not_shortened(monkeypatch):
@@ -106,12 +106,16 @@ def test_ga_goal_and_report(monkeypatch):
     ga._token.update(value="", exp=0, key="")
     with TestClient(app) as client:
         r = client.post("/settings", data={"llm_provider": "fake", "utm_enabled": "1", "click_redirect": "1",
-                                           "ga_property_id": "properties/123", "ga_service_account": sa})
-        assert "هدف «nexa_click» در گوگل آنالیتیکس ساخته شد" in r.text
-        assert settings.ga_property_id == "123"
+                                           "ga_service_account": sa})
+        assert "هیچ سایتی Property ID" in r.text  # service account is global, the property belongs to a site
         assert "nexa@proj.iam.gserviceaccount.com" in client.get("/settings").text
+        r = client.post("/sites", data={"name": "ملکجت", "url": "https://melkjet.com", "enabled": "1",
+                                        "ga_measurement_id": "G-M1", "ga_property_id": "properties/123"})
+        assert "هدف «nexa_click» در گوگل آنالیتیکس ساخته شد" in r.text
+        with m.session() as s:
+            assert s.exec(m.select(m.Site)).one().ga_property_id == "123"
         page = client.get("/reports").text
-        assert "کمپین-پاییز" in page and "<td>12</td><td>9</td><td>3</td>" in page
+        assert "ملکجت" in page and "کمپین-پاییز" in page and "<td>12</td><td>9</td><td>3</td>" in page
         r = client.post("/settings", data={"llm_provider": "fake", "ga_service_account": "not json"})
         assert "نامعتبر" in r.text
     assert any(u.endswith("/properties/123/keyEvents") for _, u in calls)

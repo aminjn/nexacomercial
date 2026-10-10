@@ -20,10 +20,13 @@
 {% else %}<tr><td colspan="5" class="muted">هنوز کلیکی ثبت نشده.</td></tr>{% endfor %}</table></div>
 
 <div class="card"><h2>گوگل آنالیتیکس (UTM)</h2>
-{% if not ga_on %}<p class="muted">وصل نیست. در <a href="/settings?at=ga#ga">تنظیمات ← ردیابی کلیک و گوگل آنالیتیکس</a> Property ID و سرویس‌اکانت را بگذار تا گزارش کمپین‌ها از خود GA این‌جا بیاید و هدف <code>nexa_click</code> خودکار ساخته شود.</p>
-{% elif ga_error %}<p class="error">{{ ga_error }}</p>
+{% if not ga_on %}<p class="muted">وصل نیست. یک بار در <a href="/settings?at=ga#ga">تنظیمات</a> سرویس‌اکانت گوگل را بگذار و در ویرایش هر سایت Property ID آن را بنویس.</p>
+{% elif not ga_reports %}<p class="muted">هیچ سایتی Property ID ندارد؛ در <a href="/sites">سایت‌ها</a> ← ویرایش، واردش کن.</p>{% endif %}
+{% for g in ga_reports %}<h3 style="font-size:14px;margin:14px 0 6px">{{ g.site.name }}</h3>
+{% if g.error %}<p class="error">{{ g.error }}</p>
 {% else %}<table><tr><th>کمپین (utm_campaign)</th><th>منبع</th><th>نوع</th><th>سشن</th><th>کاربر</th><th>تبدیل (Key events)</th></tr>
-{% for r in ga_rows %}<tr><td>{{ r.campaign }}</td><td>{{ r.source }}</td><td>{{ r.medium }}</td><td>{{ r.sessions }}</td><td>{{ r.users }}</td><td>{{ r.key_events }}</td></tr>
-{% else %}<tr><td colspan="6" class="muted">GA هنوز ورودی‌ای با UTM این برنامه ندیده (چند ساعت تا یک روز طول می‌کشد).</td></tr>{% endfor %}</table>{% endif %}
+{% for r in g.rows %}<tr><td>{{ r.campaign }}</td><td>{{ r.source }}</td><td>{{ r.medium }}</td><td>{{ r.sessions }}</td><td>{{ r.users }}</td><td>{{ r.key_events }}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">آنالیتیکس هنوز ورودی‌ای با UTM این برنامه ندیده (چند ساعت تا یک روز طول می‌کشد).</td></tr>{% endfor %}</table>{% endif %}
+{% endfor %}
 </div>
 {% endblock %}

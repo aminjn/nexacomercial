@@ -34,16 +34,24 @@ def _client() -> httpx.Client:
 # ---------------------------------------------------------------- clicks → GA4 (Measurement Protocol)
 
 
-def send_click(params: dict[str, Any]) -> None:
+def site_ids(site: Any) -> tuple[str, str, str]:
+    """(measurement id, api secret, property id) of a site; the global settings are only a fallback."""
+    mid = (getattr(site, "ga_measurement_id", "") or settings.ga_measurement_id).strip()
+    secret = (getattr(site, "ga_api_secret", "") or settings.ga_api_secret).strip()
+    pid = (getattr(site, "ga_property_id", "") or settings.ga_property_id).strip().removeprefix("properties/")
+    return mid, secret, pid
+
+
+def send_click(params: dict[str, Any], measurement_id: str, api_secret: str) -> None:
     """Fire-and-forget: never slows down the visitor's redirect."""
-    if not (settings.ga_measurement_id and settings.ga_api_secret):
+    if not (measurement_id and api_secret):
         return
 
     def go() -> None:
         try:
             with _client() as c:
                 c.post("https://www.google-analytics.com/mp/collect",
-                       params={"measurement_id": settings.ga_measurement_id, "api_secret": settings.ga_api_secret},
+                       params={"measurement_id": measurement_id, "api_secret": api_secret},
                        json={"client_id": str(uuid.uuid4()), "events": [{"name": EVENT, "params": params}]})
         except httpx.HTTPError as e:
             log.warning("GA click not sent: %s", e)
@@ -86,9 +94,9 @@ def _api(method: str, url: str, **kw: Any) -> httpx.Response:
 # ---------------------------------------------------------------- the goal (key event) and the report
 
 
-def ensure_key_event() -> str:
+def ensure_key_event(property_id: str) -> str:
     """Create the "nexa_click" key event (= GA4 goal) on the property. Safe to call repeatedly."""
-    pid = settings.ga_property_id.strip().removeprefix("properties/")
+    pid = property_id.strip().removeprefix("properties/")
     if not pid:
         raise GAError("شناسه‌ی Property گوگل آنالیتیکس خالی است")
     r = _api("POST", f"https://analyticsadmin.googleapis.com/v1beta/properties/{pid}/keyEvents",
@@ -103,9 +111,9 @@ def ensure_key_event() -> str:
     raise GAError(f"ساخت هدف نشد: HTTP {r.status_code} {r.text[:200]}")
 
 
-def campaign_report(days: int = 30) -> list[dict[str, Any]]:
+def campaign_report(property_id: str, days: int = 30) -> list[dict[str, Any]]:
     """Sessions / users / key events per campaign and source for the last `days` days."""
-    pid = settings.ga_property_id.strip().removeprefix("properties/")
+    pid = property_id.strip().removeprefix("properties/")
     start = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     r = _api("POST", f"https://analyticsdata.googleapis.com/v1beta/properties/{pid}:runReport", json={
         "dateRanges": [{"startDate": start, "endDate": "today"}],
@@ -125,4 +133,5 @@ def campaign_report(days: int = 30) -> list[dict[str, Any]]:
 
 
 def configured() -> bool:
-    return bool(settings.ga_property_id and settings.ga_service_account)
+    """A service account is set: goals can be created and reports read for every site with a property id."""
+    return bool(settings.ga_service_account)

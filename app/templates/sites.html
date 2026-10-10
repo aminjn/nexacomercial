@@ -34,6 +34,18 @@
     <label><span>صفحات عمقی که لینک بگیرند (هر خط یک آدرس)</span><textarea name="pages" class="ltr">{% if current %}{% for p in current.pages or [] %}{{ p.url }}
 {% endfor %}{% endif %}</textarea></label>
   </div>
+  <details class="guide" {{ 'open' if current and current.ga_property_id }} style="margin:8px 0"><summary>گوگل آنالیتیکس این سایت (اختیاری، یک بار)</summary>
+    <p class="muted" style="font-size:12px">کلیک‌های لینک‌های این سایت به آنالیتیکس همین سایت فرستاده می‌شود و هدف <code>nexa_click</code> خودکار در آن ساخته می‌شود. لازم نیست برای هیچ لینکی جداگانه کاری بکنی.</p>
+    <div class="grid">
+      <label><span>Measurement ID</span><input name="ga_measurement_id" class="ltr" value="{{ current.ga_measurement_id if current }}" placeholder="G-XXXXXXXXXX">
+        <small class="muted">Admin ← Data streams ← استریم سایت ← Measurement ID</small></label>
+      <label><span>Measurement Protocol API secret</span><input name="ga_api_secret" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if current and current.ga_api_secret }}">
+        <small class="muted">همان صفحه‌ی استریم ← Measurement Protocol API secrets ← Create</small>
+        {% if current and current.ga_api_secret %}<span class="check"><input type="checkbox" name="clear_ga_api_secret" value="1"> حذف</span>{% endif %}</label>
+      <label><span>Property ID (عدد)</span><input name="ga_property_id" class="ltr" value="{{ current.ga_property_id if current }}" placeholder="123456789">
+        <small class="muted">Admin ← Property details ← PROPERTY ID</small></label>
+    </div>
+  </details>
   <label><span>لحن / سبک نوشتن (اختیاری)</span><input name="style" value="{{ current.style if current }}"></label>
   <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if not current or current.enabled }}> فعال</label>
   <button>ذخیره</button> {% if current %}<a href="/sites">انصراف</a>{% endif %}
