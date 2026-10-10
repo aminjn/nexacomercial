@@ -148,6 +148,8 @@ class Publication(SQLModel, table=True):
     body_preview: str = ""
     image_url: str = ""  # image posted with a social post
     track_code: str = Field(default="", index=True)  # /r/<code> short link and utm_content
+    # a draft ("پیش‌نویس", status dry_run) keeps the full content so it can be edited and published later
+    draft: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     clicks: int = 0  # clicks on the short link (counted by this dashboard)
     views: Optional[int] = None  # stats, refreshed periodically (app/stats.py); None = not available
     likes: Optional[int] = None

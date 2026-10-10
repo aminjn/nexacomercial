@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from . import models as m
 from . import tracking
 from .config import settings
-from .content import SocialPost, generate_article, generate_social, pick_link
+from .content import Article, SocialPost, generate_article, generate_social, pick_link
 from .linkcheck import check_backlink
 from .llm import get_llm
 from .publishers import PublishError, make
@@ -120,6 +120,8 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
                 art.link_url = tagged
             rec.title, rec.link_url, rec.anchor = art.title, art.link_url, art.anchor
             rec.body_preview = art.body_markdown[:600]
+            rec.draft = {"title": art.title, "body_markdown": art.body_markdown, "excerpt": art.excerpt,
+                         "tags": art.tags, "link_url": art.link_url, "anchor": art.anchor}
             stage = "publish"
             res = None if dry else pub.publish_article(art)
         else:
@@ -138,6 +140,8 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             post.link_url = tracking.short_url(rec.track_code) or target  # short link counts the click
             rec.title, rec.link_url, rec.image_url = post.text[:120], target, post.image_url
             rec.body_preview = post.render()[:600]
+            rec.draft = {"text": post.text, "hashtags": post.hashtags, "link_url": target,
+                         "image_url": post.image_url, "title": post.title}
             if pub.needs_image and not (post.image_url or creds.get("image_url")):
                 stage = "setup"
                 raise PublishError(f"{account.kind} بدون تصویر پست نمی‌گذارد؛ در صفحه‌ی «پست‌ها» برای این سایت یک پست با تصویر بساز")
@@ -147,6 +151,7 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             rec.status = "dry_run"
         else:
             rec.url, rec.external_id = res.url, res.external_id
+            rec.draft = None
         if rec.category == "social" and media:
             with m.session() as s:
                 row = s.get(m.MediaPost, media.id)
@@ -157,7 +162,11 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
     except Exception as e:  # noqa: BLE001 — record every failure, never crash the scheduler
         rec.status, rec.error = "error", explain_error(stage, account.kind, e)[:1000]
         log.exception("[site %s] %s stage failed for account %s", site.id, stage, account.id)
+    return _record(site, account, rec, stage)
 
+
+def _record(site: m.Site, account: m.Account, rec: m.Publication, stage: str) -> m.Publication:
+    """Save the publication and update the account's health counters."""
     with m.session() as s:
         acc = s.get(m.Account, account.id)
         if rec.status == "error" and stage == "publish":
@@ -212,6 +221,36 @@ def explain_error(stage: str, kind: str, e: Exception) -> str:
     else:
         todo = ""
     return " ".join(x for x in (f"[{where}]", why, todo, f"— {raw}") if x)
+
+
+def publish_draft(pub_id: int) -> m.Publication:
+    """Publish a draft (status dry_run) as it is now — after any edits — through the same account."""
+    with m.session() as s:
+        rec = s.get(m.Publication, pub_id)
+        if rec is None or rec.status != "dry_run" or not rec.draft:
+            raise PublishError("این پیش‌نویس پیدا نشد یا قبلاً منتشر شده")
+        account, site = s.get(m.Account, rec.account_id), s.get(m.Site, rec.site_id)
+    if account is None or site is None:
+        raise PublishError("اکانت یا سایت این پیش‌نویس حذف شده")
+    d, stage = dict(rec.draft), "setup"
+    try:
+        pub = make(account.kind, {**account.creds, "_account_id": account.id})
+        stage = "publish"
+        if rec.category == "article":
+            art = Article(title=d["title"], body_markdown=d["body_markdown"], excerpt=d.get("excerpt", ""),
+                          tags=d.get("tags", []), link_url=d["link_url"], anchor=d.get("anchor", ""), site_id=site.id)
+            res = pub.publish_article(art)
+        else:
+            post = SocialPost(text=d["text"], link_url=tracking.short_url(rec.track_code) or d["link_url"],
+                              hashtags=d.get("hashtags", []), title=d.get("title", ""), image_url=d.get("image_url", ""),
+                              site_id=site.id)
+            res = pub.publish_social(post)
+        rec.status, rec.error, rec.url, rec.external_id, rec.draft = "ok", "", res.url, res.external_id, None
+        rec.created_at = m.utcnow()
+    except Exception as e:  # noqa: BLE001
+        rec.status, rec.error = "error", explain_error(stage, account.kind, e)[:1000]
+        log.exception("draft %s failed", pub_id)
+    return _record(site, account, rec, stage)
 
 
 def publish_many(site_id: int, account_ids: list[int], *, media_id: int | None = None,

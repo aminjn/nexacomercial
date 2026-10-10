@@ -118,6 +118,40 @@ Topic angle: {angle}
 {style}
 Maximum {max_chars} characters for the text. Vary the style; do not start with the site name."""
 
+# Persian prompts for Persian sites: small local models follow instructions in the target language much better
+SOCIAL_SYSTEM_FA = """تو مدیر شبکه‌های اجتماعی یک کسب‌وکار ایرانی هستی و فارسی روان، طبیعی و بی‌غلط می‌نویسی.
+پست‌هایت کوتاه، مشخص و مفید است؛ نه تبلیغ اغراق‌آمیز و نه جمله‌های کلی و تکراری.
+فقط و فقط یک شیء JSON خروجی بده با کلیدهای text و hashtags."""
+
+SOCIAL_USER_FA = """یک پست برای {platform} بنویس.
+کسب‌وکار: {site_name} — {description}
+موضوع این پست (فقط درباره‌ی همین بنویس): {focus}
+زاویه‌ی پست: {angle}
+{style}
+قوانین:
+- ۲ تا ۴ جمله‌ی کوتاه، روی‌هم حداکثر {max_chars} کاراکتر.
+- یک پیام روشن: یک نکته یا مزیت مشخص برای مخاطب، و در آخر یک دعوت کوتاه به اقدام.
+- داخل text هیچ لینک، آدرس سایت یا هشتگی ننویس؛ لینک خودکار بعد از متن اضافه می‌شود.
+- هیچ جمله یا عبارتی را تکرار نکن. از جمله‌های کلی مثل «این سایت یک پلتفرم مناسب است» استفاده نکن.
+- حداکثر ۲ ایموجی.
+- hashtags: ۳ تا ۵ کلمه‌ی فارسی مرتبط، بدون #، کلمه‌های چندتایی را با _ به هم بچسبان.
+نمونه‌ی قالب خروجی:
+{{"text": "دنبال آپارتمان اجاره‌ای نزدیک مترو هستی؟ با فیلتر محله و بودجه، در چند دقیقه گزینه‌های مناسب را ببین و مستقیم با صاحب‌خانه تماس بگیر. همین امروز جست‌وجو را شروع کن 🏠", "hashtags": ["اجاره_آپارتمان", "ملکجت", "خانه"]}}"""
+
+ARTICLE_SYSTEM_FA = """تو نویسنده‌ی حرفه‌ای محتوا و متخصص سئو هستی و فارسی روان و طبیعی می‌نویسی.
+مقاله‌هایت واقعاً به خواننده کمک می‌کند، ساختار روشن دارد و شبیه آگهی نیست. هرگز نگو که متن را هوش مصنوعی نوشته.
+فقط یک شیء JSON خروجی بده با کلیدهای title، excerpt، tags (آرایه‌ی ۳ تا ۶ کلمه) و body_markdown."""
+
+ARTICLE_USER_FA = """موضوع کلی: {niche}
+سایتی که معرفی می‌شود: {site_name} ({site_url}) — {description}
+کلمات کلیدی (طبیعی به کار ببر، نه تکراری): {keywords}
+این عنوان‌ها قبلاً نوشته شده، تکرارشان نکن: {recent}
+{style}
+یک مقاله‌ی ۶۰۰ تا ۹۰۰ کلمه‌ای به Markdown بنویس: تیترهای ##، پاراگراف‌های کوتاه، و جایی که طبیعی است یک فهرست.
+دقیقاً یک بار، در یک جمله‌ی طبیعی در میانه‌ی مقاله، همین لینک Markdown را بگذار:
+[{anchor}]({link_url})
+هیچ لینک دیگری نگذار. پاراگراف‌ها و جمله‌ها را تکرار نکن. JSON را داخل ``` نگذار."""
+
 ANGLES_FA = ["یک نکته کاربردی", "یک سؤال از مخاطب", "یک آمار یا واقعیت جالب", "یک اشتباه رایج", "معرفی کوتاه", "پیشنهاد امروز"]
 ANGLES_EN = ["a practical tip", "a question to the audience", "an interesting fact", "a common mistake", "a short intro", "today's pick"]
 
@@ -133,7 +167,8 @@ def _lang(site: Site) -> str:
 def generate_article(llm: LLM, site: Site, recent_titles: list[str], extra: str = "") -> Article:
     link_url, keywords, anchors = pick_link(site)
     anchor = pick_anchor(site, link_url, keywords, anchors)
-    prompt = ARTICLE_USER.format(
+    persian = site.language == "fa"
+    prompt = (ARTICLE_USER_FA if persian else ARTICLE_USER).format(
         lang=_lang(site),
         niche=site.niche or site.name,
         site_name=site.name,
@@ -145,8 +180,8 @@ def generate_article(llm: LLM, site: Site, recent_titles: list[str], extra: str 
         anchor=anchor,
         link_url=link_url,
     )
-    data = parse_json(llm.complete(ARTICLE_SYSTEM, prompt, json_mode=True))
-    body = str(data.get("body_markdown", "")).strip()
+    data = parse_json(llm.complete(ARTICLE_SYSTEM_FA if persian else ARTICLE_SYSTEM, prompt, json_mode=True))
+    body = clean_article(str(data.get("body_markdown", "")).strip(), link_url)
     body = ensure_link(body, anchor, link_url)
     tags = [str(t).strip() for t in data.get("tags", []) if str(t).strip()][:6]
     return Article(
@@ -177,29 +212,122 @@ def ensure_link(body_markdown: str, anchor: str, url: str) -> str:
     return "\n\n".join(paragraphs)
 
 
+# ---------------------------------------------------------------- cleaning and scoring AI output
+
+_URL_RE = re.compile(r"(https?://\S+|www\.\S+|\b[\w-]+\.(?:com|ir|net|org|io|co)(?:/\S*)?)", re.I)
+_TAG_RE = re.compile(r"#([\w\u200c]+)")
+_EMOJI_RE = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]")
+_SENT_SPLIT = re.compile(r"(?<=[.!?؟…])\s+|\n+")
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[\W_]+", "", s).lower()
+
+
+def clean_social(text: str, max_chars: int) -> tuple[str, list[str]]:
+    """Remove links the model wrote anyway, move inline #hashtags out, drop repeated sentences,
+    keep at most 3 emoji and cut on a sentence boundary. Returns (text, hashtags found inline)."""
+    tags = [t for t in _TAG_RE.findall(text)]
+    text = _URL_RE.sub("", _TAG_RE.sub("", text))
+    seen, sentences = set(), []
+    for sent in _SENT_SPLIT.split(text):
+        sent = re.sub(r"\s+", " ", sent).strip(" -–—:|،,")
+        key = _norm(sent)
+        if len(key) < 3 or key in seen or any(key in k or k in key for k in seen if len(k) > 25):
+            continue  # empty, or the same sentence again (small models love repeating themselves)
+        seen.add(key)
+        sentences.append(sent)
+    out, emoji = "", 0
+    for sent in sentences:
+        kept = []
+        for ch in sent:
+            if _EMOJI_RE.match(ch):
+                emoji += 1
+                if emoji > 3:
+                    continue
+            kept.append(ch)
+        sent = "".join(kept).strip()
+        if out and len(out) + 1 + len(sent) > max_chars:
+            break
+        out = f"{out} {sent}".strip()
+    if len(out) > max_chars:  # one very long sentence: cut on a word
+        out = out[:max_chars].rsplit(" ", 1)[0].rstrip("،, ") + "…"
+    return out, tags
+
+
+def clean_article(body: str, keep_url: str) -> str:
+    """Drop links to other sites (keep their text) and paragraphs that repeat an earlier one."""
+    body = re.sub(r"\[([^\]]+)\]\((?!" + re.escape(keep_url) + r"\))[^)]*\)", r"\1", body)
+    seen, paras = set(), []
+    for para in body.split("\n\n"):
+        key = _norm(para)
+        if key and key in seen:
+            continue
+        seen.add(key)
+        paras.append(para)
+    return "\n\n".join(paras)
+
+
+def score_text(text: str, persian: bool, max_chars: int) -> float:
+    """Higher is better: right length, right script, varied words."""
+    if not text:
+        return -100
+    score = 0.0
+    letters = [c for c in text if c.isalpha()]
+    if persian and letters:
+        latin = sum(c.isascii() for c in letters) / len(letters)
+        score -= latin * 40  # English / gibberish mixed into a Persian post
+    words = [w for w in re.findall(r"\w+", text) if len(w) > 2]
+    if words:
+        score -= (1 - len(set(words)) / len(words)) * 30  # repeated words
+    if len(text) < 60:
+        score -= 15
+    if len(text) > max_chars * 0.4:
+        score += 5
+    score -= text.count("این سایت") * 4 + text.count("پلتفرم") * 2
+    return score
+
+
 def _is_rtl(text: str) -> bool:
     return bool(re.search(r"[\u0600-\u06FF]", text))
 
 
-def generate_social(llm: LLM, site: Site, platform: str, max_chars: int = 240, extra: str = "") -> SocialPost:
-    link_url, keywords, _ = pick_link(site)
-    angles = ANGLES_FA if site.language == "fa" else ANGLES_EN
-    prompt = SOCIAL_USER.format(
-        lang=_lang(site),
-        platform=platform,
-        site_name=site.name,
-        site_url=site.url,
-        description=site.description or "-",
-        keywords=", ".join(keywords) or "-",
-        link_url=link_url,
-        angle=random.choice(angles),
-        style=_style(site, extra),
-        max_chars=max_chars,
-    )
-    data = parse_json(llm.complete(SOCIAL_SYSTEM, prompt, json_mode=True))
-    hashtags = [str(h).strip().lstrip("#") for h in data.get("hashtags", []) if str(h).strip()][:5]
+def generate_social(llm: LLM, site: Site, platform: str, max_chars: int = 240, extra: str = "",
+                    candidates: int | None = None) -> SocialPost:
+    """Write a few versions, clean each one (no links / inline hashtags / repeated sentences) and keep the best."""
+    from .config import settings
+    link_url, keywords, anchors = pick_link(site)
+    persian = site.language == "fa"
+    angles = ANGLES_FA if persian else ANGLES_EN
+    focus = "، ".join((anchors or [])[:1] + (keywords or [])[:4]) or site.niche or site.name
+    best: tuple[float, str, list[str]] | None = None
+    for _ in range(max(1, candidates or settings.ai_candidates)):
+        if persian:
+            prompt = SOCIAL_USER_FA.format(platform=platform, site_name=site.name, description=site.description or "-",
+                                           focus=focus, angle=random.choice(angles), style=_style(site, extra),
+                                           max_chars=max_chars)
+            system = SOCIAL_SYSTEM_FA
+        else:
+            prompt = SOCIAL_USER.format(lang=_lang(site), platform=platform, site_name=site.name, site_url=site.url,
+                                        description=site.description or "-", keywords=", ".join(keywords) or "-",
+                                        link_url=link_url, angle=random.choice(angles), style=_style(site, extra),
+                                        max_chars=max_chars)
+            system = SOCIAL_SYSTEM
+        try:
+            data = parse_json(llm.complete(system, prompt, json_mode=True))
+        except ValueError:
+            continue  # unreadable answer: try another version
+        text, inline_tags = clean_social(str(data.get("text", "")), max_chars)
+        tags = [str(h).strip().lstrip("#").replace(" ", "_") for h in data.get("hashtags", []) if str(h).strip()]
+        tags = list(dict.fromkeys(tags + inline_tags))[:5]
+        score = score_text(text, persian, max_chars)
+        if best is None or score > best[0]:
+            best = (score, text, tags)
+    if best is None or not best[1]:
+        raise ValueError("هوش مصنوعی متن قابل استفاده‌ای نداد")
+    _, text, hashtags = best
     return SocialPost(
-        text=str(data.get("text", "")).strip()[:max_chars],
+        text=text,
         link_url=link_url,
         hashtags=hashtags,
         title=site.name,

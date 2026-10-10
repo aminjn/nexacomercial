@@ -36,6 +36,8 @@
 <div class="grid" data-for="ollama openai anthropic">
   <label><span>حداکثر زمان انتظار برای هر متن (ثانیه)</span><input name="llm_timeout_sec" type="number" min="30" value="{{ settings.llm_timeout_sec|int }}">
     <small class="help">مدل روی CPU کند است؛ برای مقاله‌ی کامل ۶۰۰ ثانیه مناسب است.</small></label>
+  <label><span>چند نسخه از هر پست نوشته شود</span><select name="ai_candidates">{% for n, t in ((1, '۱ — سریع'), (2, '۲ — پیشنهادی'), (3, '۳ — بهترین کیفیت، کندتر')) %}<option value="{{ n }}" {{ 'selected' if settings.ai_candidates == n }}>{{ t }}</option>{% endfor %}</select>
+    <small class="help">هوش مصنوعی چند نسخه می‌نویسد، متن‌ها تمیز می‌شوند (لینک و جمله‌ی تکراری حذف می‌شود) و بهترین انتخاب می‌شود.</small></label>
 </div>
 
 <details class="guide" data-for="ollama"><summary>سرور Ollama را چطور آماده کنم که از بیرون وصل شود؟</summary>

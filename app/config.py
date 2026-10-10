@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-5-5"
     llm_timeout_sec: float = 600.0
+    # write this many versions of every social post and keep the best (more = better text, slower)
+    ai_candidates: int = 2
 
     # Scheduler: every `tick_seconds` due campaigns are processed (at most `max_jobs_per_tick`).
     scheduler_enabled: bool = True

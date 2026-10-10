@@ -32,7 +32,7 @@ class OpenAICompatLLM:
         body: dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "temperature": 0.8,
+            "temperature": 0.7,
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
@@ -61,7 +61,7 @@ class OllamaLLM:
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
-            "options": {"temperature": 0.8},
+            "options": {"temperature": 0.7},
         }
         if json_mode:
             body["format"] = "json"
@@ -126,7 +126,7 @@ class FakeLLM:
 
     def complete(self, system: str, user: str, *, json_mode: bool = False) -> str:
         h = hashlib.sha1(user.encode()).hexdigest()[:6]
-        if "SOCIAL" in user:
+        if "SOCIAL" in user or "hashtags" in system:  # social prompt (English or Persian)
             return json.dumps({"text": f"پست آزمایشی {h} — به سایت ما سر بزنید", "hashtags": ["تست"]}, ensure_ascii=False)
         return json.dumps(
             {

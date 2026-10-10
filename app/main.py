@@ -66,6 +66,8 @@ def local(t: dt.datetime | None) -> str:
 
 templates.env.filters["local"] = local
 templates.env.globals["checkable"] = engine.checkable
+STATUS_FA = {"ok": "منتشر شد", "error": "خطا", "dry_run": "پیش‌نویس"}
+templates.env.filters["status_fa"] = lambda s: STATUS_FA.get(s, s)
 templates.env.globals["is_post_url"] = stats.is_post_url
 
 
@@ -174,6 +176,7 @@ async def settings_save(request: Request):
         "llm_model": f.get("llm_model", "").strip(),
         "anthropic_model": f.get("anthropic_model", "").strip() or settings.anthropic_model,
         "llm_timeout_sec": float(f.get("llm_timeout_sec") or 600),
+        "ai_candidates": max(1, min(4, int(f.get("ai_candidates") or 2))),
         "public_url": f.get("public_url", "").strip().rstrip("/"),
         "dry_run": bool(f.get("dry_run")),
         "v2ray_enabled": bool(f.get("v2ray_enabled")),
@@ -1007,6 +1010,46 @@ def publications_page(request: Request, site_id: int = 0, status: str = "", limi
         pubs = s.exec(q).all()
         sites = {x.id: x for x in s.exec(select(m.Site)).all()}
     return render(request, "publications.html", pubs=pubs, sites=sites, f_site=site_id, f_status=status)
+
+
+@app.get("/publications/{pub_id}/draft", response_class=HTMLResponse, dependencies=protected)
+def draft_page(request: Request, pub_id: int):
+    p = _get(m.Publication, pub_id)
+    if p.status != "dry_run" or not p.draft:
+        return back(f"/sites/{p.site_id}", "این مورد پیش‌نویس نیست (یا قبل از این نسخه ساخته شده و متن کاملش ذخیره نشده)")
+    return render(request, "draft.html", p=p, d=p.draft, site=_get(m.Site, p.site_id))
+
+
+@app.post("/publications/{pub_id}/draft", dependencies=protected)
+async def draft_action(pub_id: int, request: Request):
+    f = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
+    action = f.get("action", "save")
+    with m.session() as s:
+        p = s.get(m.Publication, pub_id)
+        if p is None or p.status != "dry_run":
+            raise HTTPException(404)
+        site_id = p.site_id
+        if action == "delete":
+            s.delete(p)
+            s.commit()
+            return back(f"/sites/{site_id}", "پیش‌نویس حذف شد")
+        d = dict(p.draft or {})
+        if p.category == "article":
+            d["title"] = f.get("title", d.get("title", "")).strip()
+            d["body_markdown"] = f.get("body_markdown", d.get("body_markdown", "")).strip()
+            p.title, p.body_preview = d["title"], d["body_markdown"][:600]
+        else:
+            d["text"] = f.get("text", d.get("text", "")).strip()
+            d["hashtags"] = _list(f.get("hashtags", ""))
+            p.title = d["text"][:120]
+            p.body_preview = "\n\n".join(x for x in (d["text"], " ".join("#" + h for h in d["hashtags"])) if x)
+        p.draft = d
+        s.add(p)
+        s.commit()
+    if action == "publish":
+        threading.Thread(target=engine.publish_draft, args=(pub_id,), daemon=True).start()
+        return back(f"/sites/{site_id}?tab=summary&running=1", "در حال انتشار؛ نتیجه چند ثانیه تا چند دقیقه دیگر این‌جا می‌آید")
+    return back(f"/publications/{pub_id}/draft", "ذخیره شد")
 
 
 @app.post("/publications/{pub_id}/resend", dependencies=protected)

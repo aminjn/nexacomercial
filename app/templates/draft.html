@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block body %}
+<form method="post" action="/publications/{{ p.id }}/draft" class="card">
+  <h2>پیش‌نویس — {{ p.account_label }} <span class="muted" style="font-size:13px;font-weight:normal">({{ p.account_kind }}) · <a href="/sites/{{ site.id }}">{{ site.name }}</a></span></h2>
+  <p class="muted" style="font-size:13px">متن را هر طور می‌خواهی درست کن، بعد «منتشر کن» را بزن. لینک سایت خودکار آخر متن اضافه می‌شود.</p>
+  {% if p.category == 'article' %}
+    <label><span>عنوان</span><input name="title" value="{{ d.title }}"></label>
+    <label><span>متن مقاله (Markdown) — لینک سایت داخل متن است؛ پاکش نکن</span><textarea name="body_markdown" rows="22">{{ d.body_markdown }}</textarea></label>
+  {% else %}
+    <div class="grid" style="grid-template-columns:{{ '200px minmax(0,1fr)' if d.image_url else '1fr' }}">
+      {% if d.image_url %}<img src="{{ d.image_url }}" alt="" style="width:100%;border-radius:8px;background:#fff;object-fit:contain">{% endif %}
+      <div>
+        <label><span>متن پست</span><textarea name="text" rows="8">{{ d.text }}</textarea></label>
+        <label><span>هشتگ‌ها (بدون #)</span><input name="hashtags" value="{{ (d.hashtags or [])|join(', ') }}"></label>
+        <p class="muted ltr" style="font-size:12px;overflow-wrap:anywhere">لینک: {{ d.link_url.split('?utm_')[0].split('&utm_')[0] }}</p>
+      </div>
+    </div>
+  {% endif %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <button name="action" value="publish">منتشر کن</button>
+    <button name="action" value="save" class="sec">فقط ذخیره</button>
+    <button name="action" value="delete" class="danger" formnovalidate onclick="return confirm('این پیش‌نویس حذف شود؟')">حذف</button>
+  </div>
+</form>
+{% endblock %}

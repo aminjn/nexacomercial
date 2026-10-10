@@ -24,6 +24,7 @@ EDITABLE: dict[str, tuple[type, bool]] = {
     "anthropic_api_key": (str, True),
     "anthropic_model": (str, False),
     "llm_timeout_sec": (float, False),
+    "ai_candidates": (int, False),
     "publish_proxy": (str, True),
     "v2ray_enabled": (bool, False),
     "v2ray_link": (str, True),
