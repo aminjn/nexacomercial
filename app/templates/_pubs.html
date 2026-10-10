@@ -1,7 +1,7 @@
 <table>
   <tr><th>زمان</th><th>سایت</th><th>اکانت</th><th>نوع</th><th>عنوان</th><th>وضعیت</th><th>بک‌لینک</th><th></th></tr>
   {% for p in pubs %}
-  <tr><td class="muted" style="white-space:nowrap">{{ p.created_at|local }}</td><td>{{ sites[p.site_id].name if p.site_id in sites else p.site_id }}</td>
+  <tr><td class="muted" style="white-space:nowrap">{{ p.created_at|local }}</td><td>{% if p.site_id in sites %}<a href="/sites/{{ p.site_id }}">{{ sites[p.site_id].name }}</a>{% else %}{{ p.site_id }}{% endif %}</td>
     <td>{{ p.account_label }} <span class="muted">({{ p.account_kind }})</span></td><td>{{ 'مقاله' if p.category == 'article' else 'پست' }}</td>
     <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title[:70] }}</a>{% else %}<span title="{{ p.body_preview }}">{{ p.title[:70] }}</span>{% endif %}</td>
     <td class="{{ p.status }}">{{ p.status }}{% if p.error %}<div class="muted" style="max-width:320px">{{ p.error[:200] }}</div>{% endif %}</td>

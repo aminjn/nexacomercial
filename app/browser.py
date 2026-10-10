@@ -278,7 +278,8 @@ def login_active(account_id: int) -> bool:
 # ---------------------------------------------------------------- running a publishing recipe
 
 
-def run_with_session(account_id: int, recipe: Callable[[Any], Any], timeout: float = 300) -> Any:
+def run_with_session(account_id: int, recipe: Callable[[Any], Any], timeout: float = 300,
+                     keep_shot: bool = True) -> Any:
     """Open a page with the account's saved cookies, run `recipe(page)`, save refreshed cookies."""
     state = load_state(account_id)
     if state is None:
@@ -291,7 +292,8 @@ def run_with_session(account_id: int, recipe: Callable[[Any], Any], timeout: flo
             result = recipe(page)
             save_state(account_id, ctx.storage_state())
             try:  # what the page looked like right after publishing, to check it from the dashboard
-                ctx.pages[-1].screenshot(path=str(last_shot(account_id)), type="jpeg", quality=60)
+                if keep_shot:
+                    ctx.pages[-1].screenshot(path=str(last_shot(account_id)), type="jpeg", quality=60)
             except Exception:  # noqa: BLE001
                 pass
             return result

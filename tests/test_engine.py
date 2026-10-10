@@ -383,3 +383,52 @@ def test_resend_publication(monkeypatch):
         old = s.get(m.Publication, first.id)
         assert old.status == "error" and "دوباره ارسال شد" in old.error
         assert len(s.exec(m.select(m.Publication)).all()) == 2
+
+
+def test_old_database_gets_new_columns(tmp_path, monkeypatch):
+    import sqlite3
+
+    from app.config import settings
+    db = tmp_path / "old"
+    db.mkdir()
+    con = sqlite3.connect(db / "nexa.db")
+    con.execute("CREATE TABLE publication (id INTEGER PRIMARY KEY, created_at DATETIME, site_id INTEGER, "
+                "account_id INTEGER, title VARCHAR, status VARCHAR)")
+    con.execute("INSERT INTO publication (created_at, site_id, account_id, title, status) "
+                "VALUES ('2026-10-01 10:00:00', 1, 1, 'old post', 'ok')")
+    con.commit()
+    con.close()
+    monkeypatch.setattr(settings, "data_dir", str(db))
+    m.reset_engine()
+    try:
+        with m.session() as s:
+            p = s.exec(m.select(m.Publication)).one()
+            assert p.title == "old post" and p.likes is None and p.image_url == "" and p.body_preview == ""
+    finally:
+        m.reset_engine()
+
+
+def test_site_page_tabs_and_stats_parsing():
+    from fastapi.testclient import TestClient
+
+    from app import stats
+    from app.main import app
+    assert stats.parse_meta("1,234 likes, 56 comments - melkjet on October 10, 2026") == (1234, 56)
+    assert stats.parse_meta("2.5K likes, 3 comments - x") == (2500, 3)
+    assert stats.parse_meta("no numbers here") is None
+    site = add_site()
+    with m.session() as s:
+        s.add(m.Publication(site_id=site.id, account_id=1, account_kind="instagram_web", status="ok",
+                            url="https://www.instagram.com/p/ABC/", image_url="https://x/media/a.jpg",
+                            body_preview="کپشن تست", likes=12, comments=3))
+        s.add(m.Publication(site_id=site.id, account_id=2, account_kind="telegraph", status="ok",
+                            url="https://telegra.ph/a-01", link_found=True))
+        s.commit()
+    with TestClient(app) as client:
+        r = client.get(f"/sites/{site.id}")
+        assert r.status_code == 200 and "به تفکیک پلتفرم" in r.text and "12 / 3" in r.text
+        r = client.get(f"/sites/{site.id}?tab=instagram")
+        assert "❤ 12" in r.text and "باز کردن پست" in r.text and "کپشن تست" in r.text
+        assert client.get(f"/sites/{site.id}?tab=pubs").status_code == 200
+        assert "پست جدید برای این سایت" in client.get(f"/sites/{site.id}?tab=posts").text
+        assert f'href="/sites/{site.id}"' in client.get("/sites").text

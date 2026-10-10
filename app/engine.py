@@ -125,7 +125,7 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
                 if media:
                     post.image_url = media.image_url
                     post.link_url = media.link_url or post.link_url
-            rec.title, rec.link_url = post.text[:120], post.link_url
+            rec.title, rec.link_url, rec.image_url = post.text[:120], post.link_url, post.image_url
             rec.body_preview = post.render()[:600]
             if pub.needs_image and not (post.image_url or creds.get("image_url")):
                 stage = "setup"

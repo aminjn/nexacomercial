@@ -5,7 +5,7 @@
   <tr><th></th><th>نام</th><th>آدرس</th><th>زبان</th><th>کلمات کلیدی</th><th>صفحات عمقی</th><th>انتشار موفق</th><th></th></tr>
   {% for s in sites %}
   <tr><td>{% if s.image_url %}<img src="{{ s.image_url }}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:6px">{% endif %}</td>
-    <td>{{ s.name }} {% if not s.enabled %}<span class="muted">(غیرفعال)</span>{% endif %}</td><td class="ltr"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a></td>
+    <td><a href="/sites/{{ s.id }}"><b>{{ s.name }}</b></a> {% if not s.enabled %}<span class="muted">(غیرفعال)</span>{% endif %}</td><td class="ltr"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a></td>
     <td>{{ s.language }}</td><td>{{ (s.keywords or [])|join('، ') }}</td><td>{{ (s.pages or [])|length }}</td><td>{{ counts[s.id] }}</td>
     <td style="white-space:nowrap"><a class="btn" href="/sites?edit={{ s.id }}">ویرایش</a>
       <form class="inline" method="post" action="/sites/{{ s.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="danger">حذف</button></form></td></tr>

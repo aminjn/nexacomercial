@@ -231,3 +231,20 @@ def test_instagram_reports_failure_instead_of_success():
     with pytest.raises(PublishError, match="منتشر نکرد"):
         make("instagram_web", {**a.creds, "_account_id": a.id}).publish_social(
             SocialPost(text="x", link_url="https://example.com/", image_url=str(img)))
+
+
+def test_instagram_stats_refresh():
+    from app import stats
+    a = account("instagram_web", handle="melkjet")
+    logged_in(a, ".instagram.com")
+    with m.session() as s:
+        s.add(m.Publication(site_id=1, account_id=a.id, account_kind="instagram_web", status="ok",
+                            url="https://www.instagram.com/p/ABC/"))
+        s.add(m.Publication(site_id=1, account_id=a.id, account_kind="instagram_web", status="ok",
+                            url="https://www.instagram.com/"))  # no post address: skipped
+        s.commit()
+    PAGES["https://www.instagram.com/p/ABC/"] = '<meta name="description" content="7 likes, 2 comments - melkjet on October 10, 2026">'
+    assert stats.refresh_instagram(max_age_hours=0) == 1
+    with m.session() as s:
+        p = s.exec(m.select(m.Publication).where(m.Publication.url == "https://www.instagram.com/p/ABC/")).one()
+        assert (p.likes, p.comments) == (7, 2) and p.stats_at is not None

@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from . import browser, engine, importer, runtime, scheduler, v2ray
+from . import browser, engine, importer, runtime, scheduler, stats, v2ray
 from . import models as m
 from .config import settings
 from .publishers import REGISTRY, make
@@ -63,6 +63,7 @@ def local(t: dt.datetime | None) -> str:
 
 templates.env.filters["local"] = local
 templates.env.globals["checkable"] = engine.checkable
+templates.env.globals["is_post_url"] = stats.is_post_url
 
 
 def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
@@ -338,6 +339,54 @@ def site_delete(site_id: int):
         s.delete(s.get(m.Site, site_id))
         s.commit()
     return back("/sites", "حذف شد")
+
+
+# ---------------------------------------------------------------- one site: summary / instagram / publications / posts
+
+SITE_TABS = {"summary": "خلاصه و آمار", "instagram": "اینستاگرام", "pubs": "همه‌ی انتشارها", "posts": "پست‌های آماده"}
+
+
+@app.get("/sites/{site_id}", response_class=HTMLResponse, dependencies=protected)
+def site_page(request: Request, site_id: int, tab: str = "summary"):
+    site = _get(m.Site, site_id)
+    tab = tab if tab in SITE_TABS else "summary"
+    with m.session() as s:
+        pubs = s.exec(select(m.Publication).where(m.Publication.site_id == site_id)
+                      .order_by(m.Publication.created_at.desc())).all()
+        posts = s.exec(select(m.MediaPost).where(m.MediaPost.site_id == site_id).order_by(m.MediaPost.id.desc())).all()
+        campaigns = s.exec(select(m.Campaign).where(m.Campaign.site_id == site_id)).all()
+    ok = [p for p in pubs if p.status == "ok"]
+    insta = [p for p in pubs if p.account_kind.startswith("instagram") and p.status == "ok"]
+    today = dt.datetime.now(engine.tz()).date()
+
+    def local_day(p: m.Publication) -> dt.date:
+        return p.created_at.replace(tzinfo=dt.timezone.utc).astimezone(engine.tz()).date()
+
+    days = [today - dt.timedelta(days=i) for i in range(13, -1, -1)]
+    per_day = {d: sum(1 for p in ok if local_day(p) == d) for d in days}
+    platforms: dict[str, dict[str, Any]] = {}
+    for p in pubs:
+        row = platforms.setdefault(p.account_kind, {"ok": 0, "error": 0, "dry_run": 0, "last": None, "likes": 0})
+        row[p.status] = row.get(p.status, 0) + 1
+        row["likes"] += p.likes or 0
+        if p.status == "ok" and (row["last"] is None or p.created_at > row["last"]):
+            row["last"] = p.created_at
+    summary = {
+        "ok": len(ok), "errors": sum(1 for p in pubs if p.status == "error"),
+        "today": per_day[today], "week": sum(per_day[d] for d in days[-7:]),
+        "live": sum(1 for p in ok if p.link_found), "insta": len(insta),
+        "likes": sum(p.likes or 0 for p in insta), "comments": sum(p.comments or 0 for p in insta),
+        "no_url": sum(1 for p in insta if not stats.is_post_url(p.url)),
+    }
+    return render(request, "site.html", site=site, tab=tab, tabs=SITE_TABS, pubs=pubs[:300], insta=insta,
+                  posts=posts, campaigns=campaigns, summary=summary, platforms=platforms,
+                  per_day=per_day, max_day=max(per_day.values()) or 1, sites={site.id: site})
+
+
+@app.post("/sites/{site_id}/stats", dependencies=protected)
+def site_stats_refresh(site_id: int):
+    n = stats.refresh_instagram(max_age_hours=0, site_id=site_id)
+    return back(f"/sites/{site_id}?tab=instagram", f"آمار {n} پست اینستاگرام به‌روز شد")
 
 
 # ---------------------------------------------------------------- ready posts (image + caption) per site

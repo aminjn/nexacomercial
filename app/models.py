@@ -142,6 +142,10 @@ class Publication(SQLModel, table=True):
     link_found: Optional[bool] = None
     link_rel: str = ""  # "" (dofollow) | nofollow | ugc | sponsored ...
     body_preview: str = ""
+    image_url: str = ""  # image posted with a social post
+    likes: Optional[int] = None  # Instagram stats, refreshed through the logged-in browser
+    comments: Optional[int] = None
+    stats_at: Optional[NaiveDatetime] = None
 
 
 class RunLog(SQLModel, table=True):
@@ -160,7 +164,33 @@ def engine():
         from . import runtime  # noqa: F401 — registers the settings table
         _engine = create_engine(settings.db_url, connect_args={"check_same_thread": False})
         SQLModel.metadata.create_all(_engine)
+        _add_missing_columns(_engine)
     return _engine
+
+
+def _add_missing_columns(eng: Any) -> None:
+    """Tiny migration: columns added to a model after the database was created are added to the table
+    (existing rows get NULL / the column default). Nothing is ever dropped or changed."""
+    from sqlalchemy import inspect, text
+    insp = inspect(eng)
+    with eng.begin() as conn:
+        for table in SQLModel.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                ddl = col.type.compile(dialect=eng.dialect)
+                default = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+                extra = ""
+                if isinstance(default, bool):
+                    extra = f" DEFAULT {int(default)}"
+                elif isinstance(default, (int, float)):
+                    extra = f" DEFAULT {default}"
+                elif isinstance(default, str):
+                    extra = " DEFAULT '" + default.replace("'", "''") + "'"
+                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {ddl}{extra}'))
 
 
 def reset_engine() -> None:

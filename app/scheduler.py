@@ -5,7 +5,7 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import engine
+from . import engine, stats
 from .config import settings
 
 log = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ def start() -> BackgroundScheduler:
     sch.add_job(engine.tick, "interval", seconds=settings.tick_seconds, id="tick", coalesce=True, max_instances=1)
     sch.add_job(engine.verify_links, "interval", hours=max(1, settings.linkcheck_hours // 2), id="linkcheck",
                 coalesce=True, max_instances=1)
+    sch.add_job(stats.refresh_instagram, "interval", hours=6, id="instagram_stats", coalesce=True, max_instances=1)
     sch.start()
     _scheduler = sch
     log.info("scheduler started: tick every %ss (%s)", settings.tick_seconds, settings.timezone)
