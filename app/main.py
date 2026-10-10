@@ -343,20 +343,23 @@ def site_delete(site_id: int):
 
 # ---------------------------------------------------------------- one site: summary / instagram / publications / posts
 
-SITE_TABS = {"summary": "خلاصه و آمار", "instagram": "اینستاگرام", "pubs": "همه‌ی انتشارها", "posts": "پست‌های آماده"}
+PLATFORM_NAMES = {
+    "instagram": "اینستاگرام", "telegram": "تلگرام", "x": "X (توییتر)", "linkedin": "لینکدین", "facebook": "فیسبوک",
+    "threads": "Threads", "pinterest": "پینترست", "reddit": "ردیت", "mastodon": "ماستودون", "bluesky": "Bluesky",
+    "telegraph": "Telegraph", "blogger": "Blogger", "wordpress": "وردپرس", "medium": "Medium", "tumblr": "Tumblr",
+    "devto": "dev.to", "hashnode": "Hashnode", "ghost": "Ghost", "writeas": "Write.as", "webhook": "Webhook",
+}
 
 
 @app.get("/sites/{site_id}", response_class=HTMLResponse, dependencies=protected)
 def site_page(request: Request, site_id: int, tab: str = "summary"):
     site = _get(m.Site, site_id)
-    tab = tab if tab in SITE_TABS else "summary"
     with m.session() as s:
         pubs = s.exec(select(m.Publication).where(m.Publication.site_id == site_id)
                       .order_by(m.Publication.created_at.desc())).all()
         posts = s.exec(select(m.MediaPost).where(m.MediaPost.site_id == site_id).order_by(m.MediaPost.id.desc())).all()
         campaigns = s.exec(select(m.Campaign).where(m.Campaign.site_id == site_id)).all()
     ok = [p for p in pubs if p.status == "ok"]
-    insta = [p for p in pubs if p.account_kind.startswith("instagram") and p.status == "ok"]
     today = dt.datetime.now(engine.tz()).date()
 
     def local_day(p: m.Publication) -> dt.date:
@@ -364,29 +367,38 @@ def site_page(request: Request, site_id: int, tab: str = "summary"):
 
     days = [today - dt.timedelta(days=i) for i in range(13, -1, -1)]
     per_day = {d: sum(1 for p in ok if local_day(p) == d) for d in days}
+    # one row (and one tab) per platform; "instagram" and "instagram_web" count as the same platform
     platforms: dict[str, dict[str, Any]] = {}
     for p in pubs:
-        row = platforms.setdefault(p.account_kind, {"ok": 0, "error": 0, "dry_run": 0, "last": None, "likes": 0})
+        key = stats.base_kind(p.account_kind)
+        row = platforms.setdefault(key, {"name": PLATFORM_NAMES.get(key, key), "pubs": [], "ok": 0, "error": 0,
+                                         "dry_run": 0, "last": None, "views": 0, "likes": 0, "comments": 0,
+                                         "shares": 0, "live": 0, "has_stats": stats.has_stats(key)})
+        row["pubs"].append(p)
         row[p.status] = row.get(p.status, 0) + 1
-        row["likes"] += p.likes or 0
+        for k in ("views", "likes", "comments", "shares"):
+            row[k] += getattr(p, k) or 0
+        row["live"] += bool(p.link_found)
         if p.status == "ok" and (row["last"] is None or p.created_at > row["last"]):
             row["last"] = p.created_at
+    tabs = {"summary": "خلاصه و آمار", **{k: f"{v['name']} ({v['ok']})" for k, v in platforms.items()},
+            "posts": f"پست‌های آماده ({len(posts)})"}
+    tab = tab if tab in tabs else "summary"
     summary = {
         "ok": len(ok), "errors": sum(1 for p in pubs if p.status == "error"),
         "today": per_day[today], "week": sum(per_day[d] for d in days[-7:]),
-        "live": sum(1 for p in ok if p.link_found), "insta": len(insta),
-        "likes": sum(p.likes or 0 for p in insta), "comments": sum(p.comments or 0 for p in insta),
-        "no_url": sum(1 for p in insta if not stats.is_post_url(p.url)),
+        "live": sum(1 for p in ok if p.link_found),
+        **{k: sum(getattr(p, k) or 0 for p in ok) for k in ("views", "likes", "comments", "shares")},
     }
-    return render(request, "site.html", site=site, tab=tab, tabs=SITE_TABS, pubs=pubs[:300], insta=insta,
-                  posts=posts, campaigns=campaigns, summary=summary, platforms=platforms,
+    return render(request, "site.html", site=site, tab=tab, tabs=tabs, platforms=platforms,
+                  current=platforms.get(tab), posts=posts, campaigns=campaigns, summary=summary,
                   per_day=per_day, max_day=max(per_day.values()) or 1, sites={site.id: site})
 
 
 @app.post("/sites/{site_id}/stats", dependencies=protected)
-def site_stats_refresh(site_id: int):
-    n = stats.refresh_instagram(max_age_hours=0, site_id=site_id)
-    return back(f"/sites/{site_id}?tab=instagram", f"آمار {n} پست اینستاگرام به‌روز شد")
+def site_stats_refresh(site_id: int, tab: str = "summary"):
+    n = stats.refresh_all(max_age_hours=0, site_id=site_id)
+    return back(f"/sites/{site_id}?tab={tab}", f"آمار {n} انتشار به‌روز شد")
 
 
 # ---------------------------------------------------------------- ready posts (image + caption) per site

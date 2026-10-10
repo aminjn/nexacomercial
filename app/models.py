@@ -143,8 +143,10 @@ class Publication(SQLModel, table=True):
     link_rel: str = ""  # "" (dofollow) | nofollow | ugc | sponsored ...
     body_preview: str = ""
     image_url: str = ""  # image posted with a social post
-    likes: Optional[int] = None  # Instagram stats, refreshed through the logged-in browser
+    views: Optional[int] = None  # stats, refreshed periodically (app/stats.py); None = not available
+    likes: Optional[int] = None
     comments: Optional[int] = None
+    shares: Optional[int] = None
     stats_at: Optional[NaiveDatetime] = None
 
 

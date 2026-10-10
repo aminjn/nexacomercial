@@ -1,10 +1,12 @@
 {% extends "base.html" %}
 {% block body %}
 <div class="card" style="padding-bottom:0">
-  <h2 style="display:flex;gap:10px;align-items:center">{% if site.image_url %}<img src="{{ site.image_url }}" alt="" style="width:36px;height:36px;object-fit:contain;background:#fff;border-radius:6px">{% endif %}
+  <h2 style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">{% if site.image_url %}<img src="{{ site.image_url }}" alt="" style="width:36px;height:36px;object-fit:contain;background:#fff;border-radius:6px">{% endif %}
     {{ site.name }} <a class="muted ltr" style="font-size:13px;font-weight:normal" href="{{ site.url }}" target="_blank" rel="noopener">{{ site.url }}</a>
-    <a class="btn sec" style="margin-right:auto;font-size:13px" href="/sites?edit={{ site.id }}">ویرایش سایت</a></h2>
-  <nav class="tabs">{% for k, v in tabs.items() %}<a href="/sites/{{ site.id }}?tab={{ k }}" class="{{ 'on' if tab == k }}">{{ v }}{% if k == 'instagram' %} ({{ insta|length }}){% elif k == 'posts' %} ({{ posts|length }}){% endif %}</a>{% endfor %}</nav>
+    <span style="margin-right:auto;display:flex;gap:6px">
+      <form class="inline" method="post" action="/sites/{{ site.id }}/stats?tab={{ tab }}"><button class="sec" style="font-size:13px">به‌روزرسانی آمار</button></form>
+      <a class="btn sec" style="font-size:13px" href="/sites?edit={{ site.id }}">ویرایش سایت</a></span></h2>
+  <nav class="tabs">{% for k, v in tabs.items() %}<a href="/sites/{{ site.id }}?tab={{ k }}" class="{{ 'on' if tab == k }}">{{ v }}</a>{% endfor %}</nav>
 </div>
 
 {% if tab == 'summary' %}
@@ -13,41 +15,21 @@
   <div class="stat"><span class="muted">امروز / ۷ روز</span><b>{{ summary.today }} / {{ summary.week }}</b></div>
   <div class="stat"><span class="muted">خطا</span><b class="{{ 'error' if summary.errors }}">{{ summary.errors }}</b></div>
   <div class="stat"><span class="muted">بک‌لینک زنده</span><b class="ok">{{ summary.live }}</b></div>
-  <div class="stat"><span class="muted">پست اینستاگرام</span><b>{{ summary.insta }}</b></div>
-  <div class="stat"><span class="muted">لایک / کامنت اینستاگرام</span><b>{{ summary.likes }} / {{ summary.comments }}</b></div>
+  <div class="stat"><span class="muted">بازدید</span><b>{{ summary.views }}</b></div>
+  <div class="stat"><span class="muted">لایک / کامنت</span><b>{{ summary.likes }} / {{ summary.comments }}</b></div>
 </div>
 <div class="card"><h2>انتشار موفق در ۱۴ روز اخیر</h2>
   <div class="bars">{% for d, n in per_day.items() %}<div title="{{ d }}: {{ n }}"><span style="height:{{ (n / max_day * 100)|round }}%"></span><small>{{ n }}</small><em>{{ d.day }}</em></div>{% endfor %}</div>
 </div>
 <div class="card"><h2>به تفکیک پلتفرم</h2>
-<table><tr><th>پلتفرم</th><th>موفق</th><th>خطا</th><th>آزمایشی</th><th>لایک‌ها</th><th>آخرین انتشار موفق</th></tr>
-{% for k, r in platforms.items() %}<tr><td>{{ k }}</td><td class="ok">{{ r.ok }}</td><td class="{{ 'error' if r.error }}">{{ r.error }}</td><td>{{ r.dry_run }}</td><td>{{ r.likes or '—' }}</td><td>{{ r.last|local }}</td></tr>
-{% else %}<tr><td colspan="6" class="muted">هنوز چیزی برای این سایت منتشر نشده.</td></tr>{% endfor %}</table></div>
+<table><tr><th>پلتفرم</th><th>موفق</th><th>خطا</th><th>آزمایشی</th><th>بک‌لینک زنده</th><th>بازدید</th><th>لایک</th><th>کامنت</th><th>بازنشر</th><th>آخرین انتشار</th></tr>
+{% for k, r in platforms.items() %}<tr><td><a href="/sites/{{ site.id }}?tab={{ k }}">{{ r.name }}</a></td><td class="ok">{{ r.ok }}</td><td class="{{ 'error' if r.error }}">{{ r.error }}</td><td>{{ r.dry_run }}</td>
+  <td>{{ r.live or '—' }}</td>{% for f in ('views', 'likes', 'comments', 'shares') %}<td>{{ r[f] if r.has_stats else '—' }}</td>{% endfor %}<td>{{ r.last|local }}</td></tr>
+{% else %}<tr><td colspan="10" class="muted">هنوز چیزی برای این سایت منتشر نشده.</td></tr>{% endfor %}</table>
+<p class="muted" style="font-size:12px">«—» یعنی آن پلتفرم این آمار را عمومی نشان نمی‌دهد. آمار هر ۶ ساعت خودکار به‌روز می‌شود.</p></div>
 <div class="card"><h2>کمپین‌ها</h2>
 {% for c in campaigns %}<div><a href="/campaigns?edit={{ c.id }}">{{ c.name }}</a> <span class="muted">{{ 'فعال' if c.enabled else 'خاموش' }} · سقف روزانه {{ c.daily_limit }}</span></div>
 {% else %}<p class="muted">کمپینی برای این سایت نیست. <a href="/campaigns">بساز</a></p>{% endfor %}</div>
-
-{% elif tab == 'instagram' %}
-<div class="card">
-  <form class="inline" method="post" action="/sites/{{ site.id }}/stats"><button class="sec">به‌روزرسانی لایک و کامنت‌ها</button></form>
-  <span class="muted" style="font-size:12px">خودکار هر ۶ ساعت هم به‌روز می‌شود. لایک و کامنت فقط برای پست‌هایی گرفته می‌شود که آدرس دقیقشان معلوم است.</span>
-  {% if summary.no_url %}<p class="muted" style="font-size:12px">{{ summary.no_url }} پست آدرس دقیق ندارند (منتشر شده‌اند قبل از اینکه «نام کاربری» در اکانت پر شود). برای پست‌های بعدی در صفحه‌ی اکانت‌ها، فیلد «نام کاربری» اکانت اینستاگرام را بنویس.</p>{% endif %}
-</div>
-<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
-{% for p in insta %}
-  <div class="card" style="margin:0;padding:0;overflow:hidden">
-    {% if p.image_url %}<img src="{{ p.image_url }}" alt="" style="width:100%;aspect-ratio:1;object-fit:contain;background:#fff;display:block">{% else %}<div style="aspect-ratio:1;background:var(--bg)"></div>{% endif %}
-    <div style="padding:10px">
-      <div style="display:flex;justify-content:space-between;font-size:13px"><span>❤ {{ p.likes if p.likes is not none else '—' }} · 💬 {{ p.comments if p.comments is not none else '—' }}</span><span class="muted">{{ p.created_at|local }}</span></div>
-      <div style="font-size:12px;margin-top:6px;max-height:60px;overflow:hidden">{{ p.body_preview[:160] }}</div>
-      <div style="margin-top:6px;font-size:12px">{% if is_post_url(p.url) %}<a href="{{ p.url }}" target="_blank" rel="noopener">باز کردن پست</a>{% else %}<span class="muted">آدرس پست معلوم نیست</span>{% endif %} · {{ p.account_label }}</div>
-    </div>
-  </div>
-{% else %}<p class="muted">هنوز پستی در اینستاگرام برای این سایت منتشر نشده.</p>{% endfor %}
-</div>
-
-{% elif tab == 'pubs' %}
-<div class="card">{% include "_pubs.html" %}</div>
 
 {% elif tab == 'posts' %}
 <div class="card"><a class="btn" href="/posts?site={{ site.id }}#form">پست جدید برای این سایت</a>
@@ -58,6 +40,37 @@
   <div class="muted" style="font-size:12px">{{ p.used_count }} بار استفاده {{ '' if p.enabled else '· خاموش' }}</div></a>
 {% else %}<p class="muted">هنوز پست آماده‌ای برای این سایت نیست.</p>{% endfor %}
 </div></div>
+
+{% else %}{% set r = current %}
+<div class="stats" style="margin-bottom:16px">
+  <div class="stat"><span class="muted">موفق / خطا</span><b>{{ r.ok }} / <span class="{{ 'error' if r.error }}">{{ r.error }}</span></b></div>
+  {% if r.has_stats %}<div class="stat"><span class="muted">بازدید</span><b>{{ r.views }}</b></div>
+  <div class="stat"><span class="muted">لایک</span><b>{{ r.likes }}</b></div>
+  <div class="stat"><span class="muted">کامنت</span><b>{{ r.comments }}</b></div>
+  {% if r.shares %}<div class="stat"><span class="muted">بازنشر</span><b>{{ r.shares }}</b></div>{% endif %}{% endif %}
+  <div class="stat"><span class="muted">بک‌لینک زنده</span><b class="ok">{{ r.live }}</b></div>
+</div>
+{% if not r.has_stats %}<p class="muted" style="font-size:12px">{{ r.name }} آمار بازدید و لایک را عمومی نشان نمی‌دهد؛ این‌جا فقط فهرست و لینک انتشارها هست.</p>{% endif %}
+{% if tab == 'instagram' %}<p class="muted" style="font-size:12px">لایک و کامنت فقط برای پست‌هایی گرفته می‌شود که آدرس دقیقشان معلوم است؛ برای این کار در اکانت اینستاگرام فیلد «نام کاربری» را پر کن.</p>{% endif %}
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">
+{% for p in r.pubs %}
+  <div class="card" style="margin:0;padding:0;overflow:hidden">
+    {% if p.image_url %}<img src="{{ p.image_url }}" alt="" style="width:100%;aspect-ratio:1;object-fit:contain;background:#fff;display:block">{% endif %}
+    <div style="padding:10px">
+      <div style="display:flex;justify-content:space-between;gap:6px;font-size:12px"><span class="{{ p.status }}">{{ p.status }}</span><span class="muted">{{ p.created_at|local }}</span></div>
+      <div style="font-weight:bold;font-size:13px;margin-top:6px">{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title[:90] or 'باز کردن' }}</a>{% else %}{{ p.title[:90] }}{% endif %}</div>
+      {% if p.category == 'social' and p.body_preview %}<div style="font-size:12px;margin-top:4px;max-height:54px;overflow:hidden">{{ p.body_preview[:160] }}</div>{% endif %}
+      {% if p.error %}<div class="muted" style="font-size:12px;margin-top:4px">{{ p.error[:160] }}</div>{% endif %}
+      <div style="font-size:13px;margin-top:6px">
+        {% if p.views is not none %}👁 {{ p.views }} {% endif %}{% if p.likes is not none %}❤ {{ p.likes }} {% endif %}{% if p.comments is not none %}💬 {{ p.comments }} {% endif %}{% if p.shares %}🔁 {{ p.shares }}{% endif %}
+        {% if p.category == 'article' %}{% if p.link_found %}<span class="ok">بک‌لینک زنده {{ p.link_rel or 'dofollow' }}</span>{% elif p.link_found is sameas false %}<span class="error">بک‌لینک پیدا نشد</span>{% endif %}{% endif %}
+      </div>
+      <div style="margin-top:6px;font-size:12px">{{ p.account_label }}
+        {% if p.status != 'dry_run' %}<form class="inline" method="post" action="/publications/{{ p.id }}/resend" onsubmit="return confirm('دوباره با همین اکانت منتشر شود؟')"><button class="sec" style="font-size:12px;padding:2px 8px">ارسال دوباره</button></form>{% endif %}</div>
+    </div>
+  </div>
+{% endfor %}
+</div>
 {% endif %}
 
 <style>

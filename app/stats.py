@@ -1,15 +1,19 @@
-"""Post statistics: Instagram likes / comments read through the account's logged-in browser."""
+"""Post statistics (views / likes / comments / shares) for every platform that makes them available:
+public APIs and pages where possible, the logged-in browser for Instagram."""
 from __future__ import annotations
 
 import datetime as dt
 import logging
 import re
 from collections import defaultdict
-from typing import Any
+from typing import Any, Callable
+from urllib.parse import quote, urlsplit
+
+import httpx
 
 from sqlmodel import select
 
-from . import browser
+from . import browser, v2ray
 from . import models as m
 
 log = logging.getLogger(__name__)
@@ -81,3 +85,133 @@ def refresh_instagram(max_age_hours: float = 6, site_id: int | None = None) -> i
                 s.add(p)
             s.commit()
     return updated
+
+
+# ---------------------------------------------------------------- other platforms: public APIs / pages
+
+Stats = dict[str, int]
+
+
+def _client() -> httpx.Client:
+    return httpx.Client(timeout=20, follow_redirects=True, proxy=v2ray.publish_proxy() or None,
+                        headers={"User-Agent": "Mozilla/5.0 (compatible; NexaStats/1.0)"})
+
+
+def _telegram(c: httpx.Client, p: m.Publication) -> Stats | None:
+    found = re.match(r"https?://t\.me/([\w_]+)/(\d+)", p.url)
+    if not found:
+        return None
+    html = c.get(f"https://t.me/{found.group(1)}/{found.group(2)}?embed=1").text
+    views = re.search(r'tgme_widget_message_views">([\d.,]+\s*[KkMm]?)<', html)
+    return {"views": parse_count(views.group(1))} if views else None
+
+
+def _telegraph(c: httpx.Client, p: m.Publication) -> Stats | None:
+    path = p.external_id or urlsplit(p.url).path.strip("/")
+    d = c.get(f"https://api.telegra.ph/getViews/{quote(path)}").json()
+    return {"views": int(d["result"]["views"])} if d.get("ok") else None
+
+
+def _devto(c: httpx.Client, p: m.Publication) -> Stats | None:
+    parts = urlsplit(p.url).path.strip("/").split("/")
+    if len(parts) != 2:
+        return None
+    d = c.get(f"https://dev.to/api/articles/{parts[0]}/{parts[1]}").json()
+    return {"likes": int(d.get("public_reactions_count", 0)), "comments": int(d.get("comments_count", 0))}
+
+
+def _mastodon(c: httpx.Client, p: m.Publication) -> Stats | None:
+    u = urlsplit(p.url)
+    sid = u.path.rstrip("/").rsplit("/", 1)[-1]
+    if not sid.isdigit():
+        return None
+    d = c.get(f"{u.scheme}://{u.netloc}/api/v1/statuses/{sid}").json()
+    return {"likes": int(d.get("favourites_count", 0)), "comments": int(d.get("replies_count", 0)),
+            "shares": int(d.get("reblogs_count", 0))}
+
+
+def _bluesky(c: httpx.Client, p: m.Publication) -> Stats | None:
+    if not p.external_id.startswith("at://"):
+        return None
+    posts = c.get("https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts", params={"uris": p.external_id}).json()
+    d = (posts.get("posts") or [{}])[0]
+    return {"likes": int(d.get("likeCount", 0)), "comments": int(d.get("replyCount", 0)),
+            "shares": int(d.get("repostCount", 0))} if d else None
+
+
+def _reddit(c: httpx.Client, p: m.Publication) -> Stats | None:
+    if "/comments/" not in p.url:
+        return None
+    j = c.get(p.url.split("?")[0].rstrip("/") + ".json").json()
+    d = j[0]["data"]["children"][0]["data"]
+    return {"likes": int(d.get("score", 0)), "comments": int(d.get("num_comments", 0))}
+
+
+def _writeas(c: httpx.Client, p: m.Publication) -> Stats | None:
+    if not p.external_id:
+        return None
+    d = c.get(f"https://write.as/api/posts/{p.external_id}").json().get("data", {})
+    return {"views": int(d["views"])} if "views" in d else None
+
+
+def _wordpress(c: httpx.Client, p: m.Publication) -> Stats | None:
+    u = urlsplit(p.url)
+    if not p.external_id.isdigit():
+        return None
+    r = c.get(f"{u.scheme}://{u.netloc}/wp-json/wp/v2/comments", params={"post": p.external_id, "per_page": 1})
+    return {"comments": int(r.headers["X-WP-Total"])} if r.status_code == 200 and "X-WP-Total" in r.headers else None
+
+
+def _blogger(c: httpx.Client, p: m.Publication) -> Stats | None:
+    u = urlsplit(p.url)
+    if not p.external_id:
+        return None
+    d = c.get(f"{u.scheme}://{u.netloc}/feeds/{p.external_id}/comments/default",
+              params={"alt": "json", "max-results": 0}).json()
+    return {"comments": int(d["feed"]["openSearch$totalResults"]["$t"])}
+
+
+FETCHERS: dict[str, Callable[[httpx.Client, m.Publication], Stats | None]] = {
+    "telegram": _telegram, "telegraph": _telegraph, "devto": _devto, "mastodon": _mastodon, "bluesky": _bluesky,
+    "reddit": _reddit, "writeas": _writeas, "wordpress": _wordpress, "blogger": _blogger,
+}
+
+
+def base_kind(kind: str) -> str:
+    return kind.removesuffix("_web")
+
+
+def has_stats(kind: str) -> bool:
+    return base_kind(kind) in FETCHERS or base_kind(kind) == "instagram"
+
+
+def refresh_public(max_age_hours: float = 6, site_id: int | None = None) -> int:
+    cutoff = m.utcnow() - dt.timedelta(hours=max_age_hours)
+    with m.session() as s:
+        q = select(m.Publication).where(m.Publication.status == "ok", m.Publication.url != "")
+        if site_id:
+            q = q.where(m.Publication.site_id == site_id)
+        rows = [p for p in s.exec(q).all()
+                if base_kind(p.account_kind) in FETCHERS and not (p.stats_at and p.stats_at > cutoff)]
+    updated = 0
+    with _client() as c:
+        for p in rows:
+            try:
+                val = FETCHERS[base_kind(p.account_kind)](c, p)
+            except Exception as e:  # noqa: BLE001 — a deleted post or a changed page must not stop the rest
+                log.info("stats %s %s: %s", p.account_kind, p.url, e)
+                val = None
+            with m.session() as s:
+                row = s.get(m.Publication, p.id)
+                row.stats_at = m.utcnow()
+                for k, v in (val or {}).items():
+                    setattr(row, k, v)
+                s.add(row)
+                s.commit()
+            updated += bool(val)
+    return updated
+
+
+def refresh_all(max_age_hours: float = 6, site_id: int | None = None) -> int:
+    """Every platform: public stats + Instagram through the browser. Returns how many posts got numbers."""
+    return refresh_public(max_age_hours, site_id) + refresh_instagram(max_age_hours, site_id)

@@ -418,7 +418,7 @@ def test_site_page_tabs_and_stats_parsing():
     assert stats.parse_meta("no numbers here") is None
     site = add_site()
     with m.session() as s:
-        s.add(m.Publication(site_id=site.id, account_id=1, account_kind="instagram_web", status="ok",
+        s.add(m.Publication(site_id=site.id, account_id=1, account_kind="instagram_web", status="ok", category="social",
                             url="https://www.instagram.com/p/ABC/", image_url="https://x/media/a.jpg",
                             body_preview="کپشن تست", likes=12, comments=3))
         s.add(m.Publication(site_id=site.id, account_id=2, account_kind="telegraph", status="ok",
@@ -428,7 +428,48 @@ def test_site_page_tabs_and_stats_parsing():
         r = client.get(f"/sites/{site.id}")
         assert r.status_code == 200 and "به تفکیک پلتفرم" in r.text and "12 / 3" in r.text
         r = client.get(f"/sites/{site.id}?tab=instagram")
-        assert "❤ 12" in r.text and "باز کردن پست" in r.text and "کپشن تست" in r.text
-        assert client.get(f"/sites/{site.id}?tab=pubs").status_code == 200
+        assert "❤ 12" in r.text and "💬 3" in r.text and "کپشن تست" in r.text
+        assert "اینستاگرام (1)" in r.text and "Telegraph (1)" in r.text  # one tab per platform
+        assert "بک‌لینک زنده" in client.get(f"/sites/{site.id}?tab=telegraph").text
         assert "پست جدید برای این سایت" in client.get(f"/sites/{site.id}?tab=posts").text
         assert f'href="/sites/{site.id}"' in client.get("/sites").text
+
+
+def test_public_stats_for_each_platform(monkeypatch):
+    from app import stats
+    pages = {
+        "https://t.me/chan/42": '<span class="tgme_widget_message_views">1.5K</span>',
+        "https://api.telegra.ph/getViews/a-01": {"ok": True, "result": {"views": 33}},
+        "https://dev.to/api/articles/me/post-1": {"public_reactions_count": 4, "comments_count": 2},
+        "https://mstdn.social/api/v1/statuses/111": {"favourites_count": 5, "replies_count": 1, "reblogs_count": 2},
+        "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts": {"posts": [{"likeCount": 9, "replyCount": 0, "repostCount": 1}]},
+        "https://old.reddit.com/r/test/comments/abc/t.json": [{"data": {"children": [{"data": {"score": 17, "num_comments": 6}}]}}],
+        "https://write.as/api/posts/w1": {"data": {"views": 8}},
+        "https://blog.test/wp-json/wp/v2/comments": ("hdr", 3),
+        "https://my.blogspot.com/feeds/77/comments/default": {"feed": {"openSearch$totalResults": {"$t": "4"}}},
+    }
+
+    def handler(req):
+        url = str(req.url).split("?")[0] if "embed" not in str(req.url) else str(req.url).split("?")[0]
+        body = pages[url]
+        if isinstance(body, tuple):
+            return httpx.Response(200, json=[], headers={"X-WP-Total": str(body[1])})
+        return httpx.Response(200, text=body) if isinstance(body, str) else httpx.Response(200, json=body)
+    monkeypatch.setattr(stats, "_client", lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    rows = [("telegram", "https://t.me/chan/42", "42"), ("telegraph", "https://telegra.ph/a-01", "a-01"),
+            ("devto_web", "https://dev.to/me/post-1", ""), ("mastodon_web", "https://mstdn.social/@me/111", ""),
+            ("bluesky", "https://bsky.app/profile/me/post/k", "at://did:plc:x/app.bsky.feed.post/k"),
+            ("reddit_web", "https://old.reddit.com/r/test/comments/abc/t/", ""), ("writeas", "https://write.as/b/t", "w1"),
+            ("wordpress", "https://blog.test/hello", "5"), ("blogger", "https://my.blogspot.com/2026/10/p.html", "77"),
+            ("linkedin_web", "https://www.linkedin.com/in/me/", "")]
+    with m.session() as s:
+        for kind, url, ext in rows:
+            s.add(m.Publication(site_id=1, account_id=1, account_kind=kind, status="ok", url=url, external_id=ext))
+        s.commit()
+    assert stats.refresh_public(max_age_hours=0) == 9
+    with m.session() as s:
+        got = {p.account_kind: (p.views, p.likes, p.comments, p.shares) for p in s.exec(m.select(m.Publication)).all()}
+    assert got["telegram"] == (1500, None, None, None) and got["telegraph"][0] == 33
+    assert got["devto_web"][1:3] == (4, 2) and got["mastodon_web"][1:] == (5, 1, 2) and got["bluesky"][1:] == (9, 0, 1)
+    assert got["reddit_web"][1:3] == (17, 6) and got["writeas"][0] == 8
+    assert got["wordpress"][2] == 3 and got["blogger"][2] == 4 and got["linkedin_web"] == (None, None, None, None)
