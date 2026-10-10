@@ -1,10 +1,12 @@
 <table>
-  <tr><th>زمان</th><th>سایت</th><th>اکانت</th><th>نوع</th><th>عنوان</th><th>وضعیت</th><th>بک‌لینک</th></tr>
+  <tr><th>زمان</th><th>سایت</th><th>اکانت</th><th>نوع</th><th>عنوان</th><th>وضعیت</th><th>بک‌لینک</th><th></th></tr>
   {% for p in pubs %}
   <tr><td class="muted" style="white-space:nowrap">{{ p.created_at|local }}</td><td>{{ sites[p.site_id].name if p.site_id in sites else p.site_id }}</td>
     <td>{{ p.account_label }} <span class="muted">({{ p.account_kind }})</span></td><td>{{ 'مقاله' if p.category == 'article' else 'پست' }}</td>
     <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title[:70] }}</a>{% else %}<span title="{{ p.body_preview }}">{{ p.title[:70] }}</span>{% endif %}</td>
     <td class="{{ p.status }}">{{ p.status }}{% if p.error %}<div class="muted" style="max-width:320px">{{ p.error[:200] }}</div>{% endif %}</td>
-    <td>{% if p.status == 'ok' and not checkable(p) %}<span class="muted" title="{{ 'در کپشن اینستاگرام لینک کلیک‌پذیر نیست؛ برای دیده شدن و فروش است، نه سئو' if p.account_kind.startswith('instagram') else 'آدرس خود پست معلوم نیست' }}">— {{ 'بدون لینک (اینستاگرام)' if p.account_kind.startswith('instagram') else 'قابل بررسی نیست' }}</span>{% elif p.link_found is none %}<span class="muted">؟</span>{% elif p.link_found %}<span class="ok">زنده {{ p.link_rel or 'dofollow' }}</span>{% else %}<span class="error">پیدا نشد {{ p.link_rel }}</span>{% endif %}</td></tr>
-  {% else %}<tr><td colspan="7" class="muted">چیزی منتشر نشده.</td></tr>{% endfor %}
+    <td>{% if p.status == 'ok' and not checkable(p) %}<span class="muted" title="{{ 'در کپشن اینستاگرام لینک کلیک‌پذیر نیست؛ برای دیده شدن و فروش است، نه سئو' if p.account_kind.startswith('instagram') else 'آدرس خود پست معلوم نیست' }}">— {{ 'بدون لینک (اینستاگرام)' if p.account_kind.startswith('instagram') else 'قابل بررسی نیست' }}</span>{% elif p.link_found is none %}<span class="muted">؟</span>{% elif p.link_found %}<span class="ok">زنده {{ p.link_rel or 'dofollow' }}</span>{% else %}<span class="error">پیدا نشد {{ p.link_rel }}</span>{% endif %}</td>
+    <td>{% if p.status != 'dry_run' %}<form class="inline" method="post" action="/publications/{{ p.id }}/resend"
+          onsubmit="return confirm('{{ 'این پست واقعاً منتشر نشده بود؟ ' if p.status == 'ok' else '' }}دوباره با همین اکانت منتشر شود (متن و عکس تازه)؟')"><button class="sec" style="white-space:nowrap">ارسال دوباره</button></form>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">چیزی منتشر نشده.</td></tr>{% endfor %}
 </table>

@@ -651,6 +651,17 @@ def publications_page(request: Request, site_id: int = 0, status: str = "", limi
     return render(request, "publications.html", pubs=pubs, sites=sites, f_site=site_id, f_status=status)
 
 
+@app.post("/publications/{pub_id}/resend", dependencies=protected)
+def publication_resend(pub_id: int, request: Request):
+    try:
+        new = engine.republish(pub_id)
+    except Exception as e:  # noqa: BLE001
+        return back("/publications", f"ارسال دوباره نشد: {e}")
+    nxt = request.headers.get("referer", "/publications")
+    path = "/" + nxt.split("://", 1)[-1].split("/", 1)[-1].split("?")[0] if "://" in nxt else "/publications"
+    return back(path, f"ارسال دوباره: {new.status} {new.url or new.error}")
+
+
 @app.get("/api/publications", dependencies=protected)
 def api_publications(limit: int = 200):
     with m.session() as s:

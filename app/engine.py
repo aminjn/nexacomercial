@@ -279,6 +279,26 @@ def test_account(account_id: int, site_id: int | None = None, *, dry_run: bool =
     return publish(site, acc, dry_run=dry_run)
 
 
+def republish(pub_id: int) -> m.Publication:
+    """Publish again for the same site and account (fresh content) and mark the old record as not published."""
+    with m.session() as s:
+        old = s.get(m.Publication, pub_id)
+        if old is None:
+            raise KeyError(pub_id)
+        acc, site = s.get(m.Account, old.account_id), s.get(m.Site, old.site_id)
+        campaign = s.get(m.Campaign, old.campaign_id) if old.campaign_id else None
+    if acc is None or site is None:
+        raise PublishError("اکانت یا سایت این انتشار حذف شده")
+    new = publish(site, acc, campaign=campaign, dry_run=False)
+    with m.session() as s:
+        old = s.get(m.Publication, pub_id)
+        old.status = "error"
+        old.error = f"منتشر نشده بود — دوباره ارسال شد (نتیجه: {new.status})"
+        s.add(old)
+        s.commit()
+    return new
+
+
 NO_LINK_KINDS = ("instagram", "instagram_web")  # links in captions are plain text there
 
 

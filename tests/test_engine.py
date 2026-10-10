@@ -359,3 +359,27 @@ def test_instagram_and_homepage_urls_are_not_link_checked(monkeypatch):
             s.add(m.Publication(site_id=1, account_id=1, account_kind=kind, url=url, link_url="https://example.com"))
         s.commit()
     assert engine.verify_links(max_age_hours=0) == 1 and calls == ["https://telegra.ph/my-post-01"]
+
+
+def test_resend_publication(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    site = add_site()
+    acc = m.Account(label="tg", kind="telegram", category="social")
+    acc.creds = {"bot_token": "1:a", "chat_id": "@c"}
+    with m.session() as s:
+        s.add(acc)
+        s.commit()
+        s.refresh(acc)
+    monkeypatch.setattr(Publisher, "http", _mock(lambda req: httpx.Response(
+        200, json={"ok": True, "result": {"message_id": 7, "chat": {"username": "c"}}})))
+    first = engine.publish(site, acc, dry_run=False)
+    with TestClient(app) as client:
+        assert "ارسال دوباره" in client.get("/publications").text
+        r = client.post(f"/publications/{first.id}/resend", headers={"referer": "http://t/publications"})
+        assert "ارسال دوباره: ok" in r.text
+    with m.session() as s:
+        old = s.get(m.Publication, first.id)
+        assert old.status == "error" and "دوباره ارسال شد" in old.error
+        assert len(s.exec(m.select(m.Publication)).all()) == 2
