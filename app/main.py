@@ -273,9 +273,7 @@ def sites_page(request: Request, edit: int = 0):
         sites = s.exec(select(m.Site)).all()
         counts = {x.id: m.count_since(s, dt.datetime.min, site_id=x.id, status="ok") for x in sites}
     current = next((x for x in sites if x.id == edit), None)
-    return render(request, "sites.html", sites=sites, counts=counts, current=current,
-                  pages_text="\n".join((p.get("url", "") + (" | " + "، ".join(p["keywords"]) if p.get("keywords") else ""))
-                                       if isinstance(p, dict) else str(p) for p in (current.pages or [])) if current else "")
+    return render(request, "sites.html", sites=sites, counts=counts, current=current)
 
 
 def _parse_pages(text: str) -> list[dict[str, Any]]:

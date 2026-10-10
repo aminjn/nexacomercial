@@ -29,13 +29,19 @@
   </div>
   <label><span>توضیح سایت (هوش مصنوعی از این برای نوشتن استفاده می‌کند)</span><textarea name="description">{{ current.description if current }}</textarea></label>
   <div class="grid">
-    <label><span>کلمات کلیدی (با کاما جدا کن)</span><textarea name="keywords">{{ (current.keywords or [])|join(', ') if current }}</textarea></label>
-    <label><span>انکرتکست‌های دلخواه (اختیاری)</span><textarea name="anchors">{{ (current.anchors or [])|join(', ') if current }}</textarea></label>
+    <label><span>کلمات کلیدی</span>
+      <div class="chips" data-name="keywords" data-value='{{ (current.keywords or [])|tojson if current else "[]" }}' data-placeholder="یک کلمه بنویس و Enter بزن"></div>
+      <small class="help">هر کلمه یا عبارت را بنویس و Enter بزن تا اضافه شود؛ با × حذف می‌شود.</small></label>
+    <label><span>انکرتکست‌های دلخواه (اختیاری)</span>
+      <div class="chips" data-name="anchors" data-value='{{ (current.anchors or [])|tojson if current else "[]" }}' data-placeholder="مثلاً: خرید آپارتمان در تهران"></div>
+      <small class="help">متنی که روی لینک سایت نوشته می‌شود. خالی = خودکار.</small></label>
   </div>
-  <label><span>صفحه‌های دیگر همین سایت که لینک بگیرند — هر خط یک صفحه (لازم نیست برای هر صفحه یک سایت جدا بسازی)</span>
-    <textarea name="pages" rows="6" spellcheck="false" placeholder="https://melkjet.com/search?type=rent | اجاره آپارتمان، رهن و اجاره
-https://melkjet.com/search | جستجوی هوشمند ملک">{{ pages_text }}</textarea>
-    <small class="help">قالب هر خط: <code>آدرس صفحه | کلمات کلیدی همان صفحه</code> (کلمات اختیاری است؛ خالی = کلمات کلیدی بالا). هر پست به‌صورت تصادفی به صفحه‌ی اصلی یا یکی از این صفحه‌ها لینک می‌دهد و متنش را بر اساس کلمات همان صفحه می‌نویسد. آمار هر صفحه جدا در صفحه‌ی سایت دیده می‌شود.</small></label>
+  <div style="margin:10px 0"><span class="muted" style="font-size:12px">صفحه‌های دیگر همین سایت که لینک بگیرند (لازم نیست برای هر صفحه یک سایت جدا بسازی)</span>
+    <div id="page_rows"></div>
+    <button type="button" class="sec" id="add_page" style="margin-top:6px">+ افزودن صفحه</button>
+    <textarea name="pages" id="pages_field" hidden></textarea>
+    <small class="help">هر پست تصادفی به صفحه‌ی اصلی یا یکی از این صفحه‌ها لینک می‌دهد و متنش را با کلمات همان صفحه می‌نویسد. کلمات هر صفحه اختیاری است (خالی = کلمات کلیدی بالا). آمار هر صفحه جدا در صفحه‌ی سایت دیده می‌شود.</small>
+  </div>
   <details class="guide" {{ 'open' if current and current.ga_property_id }} style="margin:8px 0"><summary>گوگل آنالیتیکس این سایت (اختیاری، یک بار)</summary>
     <p class="muted" style="font-size:12px">کلیک‌های لینک‌های این سایت به آنالیتیکس همین سایت فرستاده می‌شود و هدف <code>nexa_click</code> خودکار در آن ساخته می‌شود. لازم نیست برای هیچ لینکی جداگانه کاری بکنی.</p>
     <div class="grid">
@@ -68,7 +74,74 @@ https://melkjet.com/search | جستجوی هوشمند ملک">{{ pages_text }}<
   <input type="file" name="file" accept=".csv,.json" style="margin:8px 0">
   <button>ورود</button>
 </form></div>
+<style>
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px;min-height:40px;cursor:text}
+.chips .chip{display:inline-flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:13px}
+.chips .chip button{background:none;border:0;color:var(--muted);padding:0 2px;cursor:pointer;font-size:15px;line-height:1}
+.chips input{border:0;background:transparent;flex:1;min-width:140px;padding:4px;outline:none}
+.page-row{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr) auto;gap:8px;align-items:start;margin-top:6px}
+@media (max-width:700px){.page-row{grid-template-columns:1fr}}
+</style>
 <script>
+// tag input: type, press Enter (or comma), get a chip; the hidden input holds "a, b, c" for the server
+function chipInput(box, values, onChange){
+  const name = box.dataset.name, hidden = document.createElement('input'), input = document.createElement('input');
+  hidden.type = 'hidden'; if (name) hidden.name = name;
+  input.placeholder = box.dataset.placeholder || 'بنویس و Enter بزن';
+  let items = [];
+  const sync = () => { hidden.value = items.join(', '); onChange && onChange(items); };
+  const render = () => {
+    box.querySelectorAll('.chip').forEach(c => c.remove());
+    items.forEach((v, i) => {
+      const c = document.createElement('span'), x = document.createElement('button');
+      c.className = 'chip'; c.textContent = v; x.type = 'button'; x.textContent = '×'; x.title = 'حذف';
+      x.onclick = () => { items.splice(i, 1); render(); };
+      c.appendChild(x); box.insertBefore(c, input);
+    });
+    sync();
+  };
+  const add = text => {
+    for (const part of text.split(/[,،\n]+/)) { const v = part.trim(); if (v && !items.includes(v)) items.push(v); }
+    input.value = ''; render();
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === '،') { e.preventDefault(); add(input.value); }
+    else if (e.key === 'Backspace' && !input.value && items.length) { items.pop(); render(); }
+  });
+  input.addEventListener('blur', () => add(input.value));
+  input.addEventListener('paste', e => { e.preventDefault(); add((e.clipboardData || window.clipboardData).getData('text')); });
+  box.addEventListener('click', () => input.focus());
+  box.append(input, hidden);
+  items = (values || []).filter(Boolean); render();
+  return () => items;
+}
+document.querySelectorAll('.chips[data-name]').forEach(b => chipInput(b, JSON.parse(b.dataset.value || '[]')));
+
+// deep pages: one row per page (address + its own keywords), serialised to "url | kw, kw" lines
+const PAGES = {{ (current.pages or [])|tojson if current else '[]' }};
+const rows = document.getElementById('page_rows'), field = document.getElementById('pages_field'), getters = [];
+function syncPages(){
+  field.value = getters.filter(Boolean).map(g => g()).filter(p => p.url)
+    .map(p => p.keywords.length ? `${p.url} | ${p.keywords.join(', ')}` : p.url).join('\n');
+}
+function addPage(page){
+  const row = document.createElement('div'), url = document.createElement('input'), kw = document.createElement('div'), del = document.createElement('button');
+  row.className = 'page-row';
+  url.className = 'ltr'; url.placeholder = 'https://melkjet.com/search?type=rent'; url.value = (typeof page === 'string' ? page : page.url) || '';
+  kw.className = 'chips'; kw.dataset.placeholder = 'کلمات این صفحه (اختیاری) + Enter';
+  del.type = 'button'; del.className = 'danger'; del.textContent = 'حذف';
+  row.append(url, kw, del); rows.appendChild(row);
+  const keywords = chipInput(kw, (page && page.keywords) || [], syncPages), idx = getters.length;
+  getters.push(() => ({url: url.value.trim(), keywords: keywords()}));
+  url.addEventListener('input', syncPages);
+  del.onclick = () => { getters[idx] = null; row.remove(); syncPages(); };
+  syncPages();
+  return url;
+}
+PAGES.forEach(addPage);
+document.getElementById('add_page').onclick = () => addPage({url: '', keywords: []}).focus();
+document.querySelector('form[action="/sites"]').addEventListener('submit', syncPages);
+
 document.getElementById('image_file').addEventListener('change', e => {
   const f = e.target.files[0], img = document.getElementById('image_preview');
   if (f) { img.src = URL.createObjectURL(f); img.style.display = ''; }

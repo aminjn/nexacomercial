@@ -248,3 +248,49 @@ def test_instagram_stats_refresh():
     with m.session() as s:
         p = s.exec(m.select(m.Publication).where(m.Publication.url == "https://www.instagram.com/p/ABC/")).one()
         assert (p.likes, p.comments) == (7, 2) and p.stats_at is not None
+
+
+def test_site_form_tags_and_page_rows_in_a_real_browser():
+    """Type keywords as tags and add page rows like a user would; the form must send the old formats."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with m.session() as s:
+        site = m.Site(name="ملکجت", url="https://melkjet.com/", keywords=["ملک"],
+                      pages=[{"url": "https://melkjet.com/search", "keywords": ["جستجوی ملک"]}])
+        s.add(site)
+        s.commit()
+        s.refresh(site)
+    with TestClient(app) as client:
+        html = client.get(f"/sites?edit={site.id}").text
+
+    def job():
+        ctx = browser.new_context()
+        try:
+            page = ctx.new_page()
+            page.set_content(html)
+            kw = page.locator('.chips[data-name="keywords"] input:not([type=hidden])')
+            kw.fill("اجاره")
+            kw.press("Enter")
+            kw.fill("خرید و فروش")
+            kw.press("Enter")
+            page.locator('.chips[data-name="anchors"] input:not([type=hidden])').fill("املاک تهران")
+            page.locator("#add_page").click()
+            row = page.locator(".page-row").nth(1)
+            row.locator("input.ltr").fill("https://melkjet.com/search?type=rent")
+            tag = row.locator(".chips input:not([type=hidden])")
+            tag.fill("اجاره آپارتمان، رهن")  # a pasted list with Persian commas also works
+            tag.press("Enter")
+            page.locator(".page-row").nth(0).locator(".chip button").click()  # remove the first page's keyword
+            page.locator('form[action="/sites"]').evaluate("f => f.dispatchEvent(new Event('submit'))")
+            return {
+                "keywords": page.locator('input[name="keywords"]').input_value(),
+                "anchors": page.locator('input[name="anchors"]').input_value(),
+                "pages": page.locator("#pages_field").input_value(),
+            }
+        finally:
+            ctx.close()
+    got = browser.call(job)
+    assert got["keywords"] == "ملک, اجاره, خرید و فروش"
+    assert got["anchors"] == "املاک تهران"
+    assert got["pages"] == "https://melkjet.com/search\nhttps://melkjet.com/search?type=rent | اجاره آپارتمان, رهن"
