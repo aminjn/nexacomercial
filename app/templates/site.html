@@ -4,12 +4,22 @@
   <h2 style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">{% if site.image_url %}<img src="{{ site.image_url }}" alt="" style="width:36px;height:36px;object-fit:contain;background:#fff;border-radius:6px">{% endif %}
     {{ site.name }} <a class="muted ltr" style="font-size:13px;font-weight:normal" href="{{ site.url }}" target="_blank" rel="noopener">{{ site.url }}</a>
     <span style="margin-right:auto;display:flex;gap:6px">
+      <a class="btn" style="font-size:13px" href="/compose?site={{ site.id }}">+ پست جدید</a>
       <form class="inline" method="post" action="/sites/{{ site.id }}/stats?tab={{ tab }}"><button class="sec" style="font-size:13px">به‌روزرسانی آمار</button></form>
       <a class="btn sec" style="font-size:13px" href="/sites?edit={{ site.id }}">ویرایش سایت</a></span></h2>
   <nav class="tabs">{% for k, v in tabs.items() %}<a href="/sites/{{ site.id }}?tab={{ k }}" class="{{ 'on' if tab == k }}">{{ v }}</a>{% endfor %}</nav>
 </div>
 
 {% if tab == 'summary' %}
+<div class="card"><h2>آخرین انتشارها {% if running %}<span class="muted" style="font-size:12px;font-weight:normal">— در حال انتشار؛ این صفحه هر ۱۰ ثانیه خودش به‌روز می‌شود</span>{% endif %}</h2>
+  {% if running %}<meta http-equiv="refresh" content="10">{% endif %}
+  <table><tr><th>زمان</th><th>اکانت</th><th>متن</th><th>وضعیت</th><th></th></tr>
+  {% for p in recent %}<tr><td class="muted" style="white-space:nowrap">{{ p.created_at|local }}</td><td>{{ p.account_label }} <span class="muted">({{ p.account_kind }})</span></td>
+    <td>{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title[:70] }}</a>{% else %}{{ p.title[:70] }}{% endif %}</td>
+    <td class="{{ p.status }}">{{ p.status }}{% if p.error %}<div class="muted" style="font-size:12px;max-width:340px">{{ p.error[:180] }}</div>{% endif %}</td>
+    <td>{% if p.status != 'dry_run' %}<form class="inline" method="post" action="/publications/{{ p.id }}/resend" onsubmit="return confirm('دوباره با همین اکانت منتشر شود؟')"><button class="sec" style="font-size:12px;padding:2px 8px">ارسال دوباره</button></form>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">هنوز چیزی منتشر نشده. <a href="/compose?site={{ site.id }}">اولین پست را بگذار</a> یا در تب «کمپین خودکار» انتشار خودکار را روشن کن.</td></tr>{% endfor %}</table>
+</div>
 <div class="stats" style="margin-bottom:16px">
   <div class="stat"><span class="muted">انتشار موفق</span><b>{{ summary.ok }}</b></div>
   <div class="stat"><span class="muted">امروز / ۷ روز</span><b>{{ summary.today }} / {{ summary.week }}</b></div>
@@ -37,6 +47,35 @@
 <div class="card"><h2>کمپین‌ها</h2>
 {% for c in campaigns %}<div><a href="/campaigns?edit={{ c.id }}">{{ c.name }}</a> <span class="muted">{{ 'فعال' if c.enabled else 'خاموش' }} · سقف روزانه {{ c.daily_limit }}</span></div>
 {% else %}<p class="muted">کمپینی برای این سایت نیست. <a href="/campaigns">بساز</a></p>{% endfor %}</div>
+
+{% elif tab == 'campaign' %}
+<div class="card"><h2>انتشار خودکار</h2>
+<p class="muted" style="font-size:13px">برنامه خودش در ساعت‌هایی که می‌گویی، با فاصله‌های تصادفی، از طریق اکانت‌هایی که تیک می‌زنی پست و مقاله می‌گذارد. عکس و متن را از «پست‌های آماده» برمی‌دارد؛ اگر نبود، هوش مصنوعی می‌نویسد.</p>
+{% for c in campaigns %}
+<div class="guide" style="margin-bottom:10px">
+  <b>{{ c.name }}</b> {% if c.enabled %}<span class="ok">● روشن</span>{% else %}<span class="muted">● خاموش</span>{% endif %}
+  <span class="muted" style="font-size:12px">· {{ c.daily_limit }} انتشار در روز · ساعت {{ c.active_hours_start }} تا {{ c.active_hours_end }} · {{ c.account_ids|length }} اکانت · اجرای بعدی: {{ c.next_run_at|local }}</span>
+  <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+    <form class="inline" method="post" action="/campaigns/{{ c.id }}/toggle?next=/sites/{{ site.id }}?tab=campaign"><button class="sec">{{ 'خاموش کن' if c.enabled else 'روشن کن' }}</button></form>
+    <form class="inline" method="post" action="/campaigns/{{ c.id }}/run?next=/sites/{{ site.id }}?tab=summary"><button class="sec">یک انتشار همین الان</button></form>
+    <a class="btn sec" href="/sites/{{ site.id }}?tab=campaign&edit={{ c.id }}#cform">ویرایش</a>
+    <a class="muted" style="font-size:12px;align-self:center" href="/campaigns?edit={{ c.id }}">تنظیمات پیشرفته</a>
+  </div>
+</div>{% endfor %}
+{% set ce = campaigns|selectattr('id', 'equalto', request.query_params.get('edit')|int)|first if request.query_params.get('edit') else none %}
+<form method="post" action="/sites/{{ site.id }}/campaign" id="cform" style="margin-top:14px">
+  <h3 style="font-size:15px">{{ 'ویرایش «' ~ ce.name ~ '»' if ce else ('کمپین جدید' if campaigns else 'روشن کردن انتشار خودکار') }}</h3>
+  {% if ce %}<input type="hidden" name="id" value="{{ ce.id }}">{% endif %}
+  <div class="grid">
+    <label><span>چند انتشار در روز (همه‌ی اکانت‌ها با هم)</span><select name="daily_limit">{% for n in (1, 2, 3, 4, 6, 8, 12, 20) %}<option {{ 'selected' if (ce and ce.daily_limit == n) or (not ce and n == 3) }}>{{ n }}</option>{% endfor %}</select></label>
+    <label><span>از ساعت</span><select name="active_hours_start">{% for h in range(24) %}<option value="{{ h }}" {{ 'selected' if (ce and ce.active_hours_start == h) or (not ce and h == 9) }}>{{ h }}:00</option>{% endfor %}</select></label>
+    <label><span>تا ساعت</span><select name="active_hours_end">{% for h in range(24) %}<option value="{{ h }}" {{ 'selected' if (ce and ce.active_hours_end == h) or (not ce and h == 22) }}>{{ h }}:00</option>{% endfor %}</select></label>
+    <label><span>چه چیزی منتشر شود</span><select name="content_mode">{% for k, v in (('both', 'پست و مقاله'), ('social', 'فقط پست'), ('article', 'فقط مقاله (بک‌لینک)')) %}<option value="{{ k }}" {{ 'selected' if ce and ce.content_mode == k }}>{{ v }}</option>{% endfor %}</select></label>
+  </div>
+  <div style="margin:8px 0"><b style="font-size:13px">از طریق کدام اکانت‌ها؟</b>{% set checked = ce.account_ids if ce else [] %}{% include "_pick_accounts.html" %}</div>
+  <button>{{ 'ذخیره' if ce else 'روشن کن' }}</button>
+</form>
+</div>
 
 {% elif tab == 'posts' %}
 <div class="card"><a class="btn" href="/posts?site={{ site.id }}#form">پست جدید برای این سایت</a>

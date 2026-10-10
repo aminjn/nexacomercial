@@ -34,13 +34,13 @@
       <small class="help">هر کلمه یا عبارت را بنویس و Enter بزن تا اضافه شود؛ با × حذف می‌شود.</small></label>
     <label><span>انکرتکست‌های دلخواه (اختیاری)</span>
       <div class="chips" data-name="anchors" data-value='{{ (current.anchors or [])|tojson if current else "[]" }}' data-placeholder="مثلاً: خرید آپارتمان در تهران"></div>
-      <small class="help">متنی که روی لینک سایت نوشته می‌شود. خالی = خودکار.</small></label>
+      <small class="help">متنی که روی لینک نوشته می‌شود؛ برای همه‌ی صفحه‌ها، مگر صفحه‌ای که انکرتکست خودش را دارد. خالی = خودکار.</small></label>
   </div>
   <div style="margin:10px 0"><span class="muted" style="font-size:12px">صفحه‌های دیگر همین سایت که لینک بگیرند (لازم نیست برای هر صفحه یک سایت جدا بسازی)</span>
     <div id="page_rows"></div>
     <button type="button" class="sec" id="add_page" style="margin-top:6px">+ افزودن صفحه</button>
     <textarea name="pages" id="pages_field" hidden></textarea>
-    <small class="help">هر پست تصادفی به صفحه‌ی اصلی یا یکی از این صفحه‌ها لینک می‌دهد و متنش را با کلمات همان صفحه می‌نویسد. کلمات هر صفحه اختیاری است (خالی = کلمات کلیدی بالا). آمار هر صفحه جدا در صفحه‌ی سایت دیده می‌شود.</small>
+    <small class="help">هر ردیف: آدرس صفحه، کلمات کلیدی همان صفحه و انکرتکست‌های همان صفحه. هر پست تصادفی به صفحه‌ی اصلی یا یکی از این صفحه‌ها لینک می‌دهد و متن و متن لینکش را با کلمات و انکرتکست‌های همان صفحه می‌سازد. خالی بگذاری = همان‌هایی که بالا برای کل سایت نوشتی. آمار هر صفحه جدا در صفحه‌ی سایت دیده می‌شود.</small>
   </div>
   <details class="guide" {{ 'open' if current and current.ga_property_id }} style="margin:8px 0"><summary>گوگل آنالیتیکس این سایت (اختیاری، یک بار)</summary>
     <p class="muted" style="font-size:12px">کلیک‌های لینک‌های این سایت به آنالیتیکس همین سایت فرستاده می‌شود و هدف <code>nexa_click</code> خودکار در آن ساخته می‌شود. لازم نیست برای هیچ لینکی جداگانه کاری بکنی.</p>
@@ -79,7 +79,7 @@
 .chips .chip{display:inline-flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:13px}
 .chips .chip button{background:none;border:0;color:var(--muted);padding:0 2px;cursor:pointer;font-size:15px;line-height:1}
 .chips input{border:0;background:transparent;flex:1;min-width:140px;padding:4px;outline:none}
-.page-row{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr) auto;gap:8px;align-items:start;margin-top:6px}
+.page-row{display:grid;grid-template-columns:minmax(200px,1.2fr) minmax(180px,1fr) minmax(180px,1fr) auto;gap:8px;align-items:start;margin-top:6px}
 @media (max-width:700px){.page-row{grid-template-columns:1fr}}
 </style>
 <script>
@@ -122,17 +122,20 @@ const PAGES = {{ (current.pages or [])|tojson if current else '[]' }};
 const rows = document.getElementById('page_rows'), field = document.getElementById('pages_field'), getters = [];
 function syncPages(){
   field.value = getters.filter(Boolean).map(g => g()).filter(p => p.url)
-    .map(p => p.keywords.length ? `${p.url} | ${p.keywords.join(', ')}` : p.url).join('\n');
+    .map(p => [p.url, p.keywords.join(', '), p.anchors.join(', ')].join(' | ').replace(/( \| )+$/, '')).join('\n');
 }
 function addPage(page){
-  const row = document.createElement('div'), url = document.createElement('input'), kw = document.createElement('div'), del = document.createElement('button');
+  const row = document.createElement('div'), url = document.createElement('input'), kw = document.createElement('div'),
+        an = document.createElement('div'), del = document.createElement('button');
   row.className = 'page-row';
   url.className = 'ltr'; url.placeholder = 'https://melkjet.com/search?type=rent'; url.value = (typeof page === 'string' ? page : page.url) || '';
-  kw.className = 'chips'; kw.dataset.placeholder = 'کلمات این صفحه (اختیاری) + Enter';
+  kw.className = 'chips'; kw.dataset.placeholder = 'کلمات کلیدی این صفحه + Enter';
+  an.className = 'chips'; an.dataset.placeholder = 'انکرتکست این صفحه + Enter';
   del.type = 'button'; del.className = 'danger'; del.textContent = 'حذف';
-  row.append(url, kw, del); rows.appendChild(row);
-  const keywords = chipInput(kw, (page && page.keywords) || [], syncPages), idx = getters.length;
-  getters.push(() => ({url: url.value.trim(), keywords: keywords()}));
+  row.append(url, kw, an, del); rows.appendChild(row);
+  const keywords = chipInput(kw, (page && page.keywords) || [], syncPages),
+        anchors = chipInput(an, (page && page.anchors) || [], syncPages), idx = getters.length;
+  getters.push(() => ({url: url.value.trim(), keywords: keywords(), anchors: anchors()}));
   url.addEventListener('input', syncPages);
   del.onclick = () => { getters[idx] = null; row.remove(); syncPages(); };
   syncPages();

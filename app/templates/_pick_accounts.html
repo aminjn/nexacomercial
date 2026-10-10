@@ -1,0 +1,19 @@
+{# account checkboxes grouped by platform; needs `groups` and optional `checked` (list of ids) #}
+{% set checked = checked or [] %}
+{% if not groups %}<p class="muted">هنوز اکانتی نساخته‌ای. <a href="/accounts">اکانت اضافه کن</a> (مثلاً اینستاگرام یا تلگرام).</p>{% endif %}
+<div class="pick">
+{% for name, accs in groups %}
+  <fieldset><legend>{{ name }} <button type="button" class="link" onclick="this.closest('fieldset').querySelectorAll('input').forEach(i => i.checked = !i.checked)">همه</button></legend>
+  {% for a in accs %}<label class="acc"><input type="checkbox" name="account_ids" value="{{ a.id }}" {{ 'checked' if a.id in checked }}>
+    <span>{{ a.label }}{% if a.status == 'paused' %} <span class="paused">(متوقف)</span>{% endif %}
+    <small class="muted">{{ 'مقاله' if a.category == 'article' else 'پست' }}{% if a.kind.startswith('instagram') or a.kind.startswith('pinterest') %} · عکس لازم{% endif %}</small></span></label>{% endfor %}
+  </fieldset>
+{% endfor %}
+</div>
+<style>
+.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.pick fieldset{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0}
+.pick legend{font-weight:bold;padding:0 4px}.pick .link{background:none;border:0;color:var(--acc);padding:0 4px;font-size:12px;cursor:pointer}
+.pick .acc{display:flex;gap:8px;align-items:flex-start;margin:4px 0;cursor:pointer}.pick .acc input{width:auto;margin-top:4px}
+.pick .acc small{display:block}
+</style>

@@ -506,3 +506,77 @@ def test_site_pages_with_keywords_and_merge():
         assert "اجاره آپارتمان" in sites[0].keywords
         assert s.exec(m.select(m.Publication)).one().site_id == main.id
         assert s.exec(m.select(m.MediaPost)).one().site_id == main.id
+
+
+def test_page_anchor_texts_with_site_fallback(monkeypatch):
+    import random
+
+    from app.content import pick_link
+    from app.main import _parse_pages
+    pages = _parse_pages("https://e.com/rent | اجاره | اجاره آپارتمان در تهران\nhttps://e.com/buy |  | خرید خانه\nhttps://e.com/x")
+    assert pages == [{"url": "https://e.com/rent", "keywords": ["اجاره"], "anchors": ["اجاره آپارتمان در تهران"]},
+                     {"url": "https://e.com/buy", "anchors": ["خرید خانه"]}, {"url": "https://e.com/x"}]
+    site = m.Site(name="s", url="https://e.com", keywords=["ملک"], anchors=["ملکجت"], pages=pages)
+    got = {}
+    for i in range(4):
+        monkeypatch.setattr(random, "choice", lambda seq, i=i: seq[i])
+        url, kws, anchors = pick_link(site)
+        got[url] = (kws, anchors)
+    assert got["https://e.com/rent"] == (["اجاره"], ["اجاره آپارتمان در تهران"])
+    assert got["https://e.com/buy"] == (["ملک"], ["خرید خانه"])
+    assert got["https://e.com/x"] == (["ملک"], ["ملکجت"])  # no own anchors: the site's ones
+
+
+def test_compose_and_simple_campaign(monkeypatch):
+    import threading
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    class Now:  # run the background publishing right away
+        def __init__(self, target, args=(), kwargs=None, daemon=None):
+            self.t, self.a, self.k = target, args, kwargs or {}
+
+        def start(self):
+            self.t(*self.a, **self.k)
+    monkeypatch.setattr(threading, "Thread", Now)
+    site = add_site()
+    accs = []
+    with m.session() as s:
+        for label, kind in (("tg", "telegram"), ("ig", "instagram_web")):
+            a = m.Account(label=label, kind=kind, category="social")
+            s.add(a)
+            s.commit()
+            s.refresh(a)
+            accs.append(a)
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+    with TestClient(app) as client:
+        page = client.get("/compose").text
+        assert "پست جدید" in page and "تلگرام" in page and "اینستاگرام" in page and "عکس لازم" in page
+        r = client.post("/compose", data={"site_id": site.id, "caption": "متن خودم", "action": "preview",
+                                          "account_ids": [accs[0].id, accs[1].id]},
+                        files={"image_file": ("a.png", png, "image/png")})
+        assert "پیش‌نمایش در 2 اکانت شروع شد" in r.text and "آخرین انتشارها" in r.text
+        with m.session() as s:
+            pubs = s.exec(m.select(m.Publication)).all()
+            assert len(pubs) == 2 and all(p.status == "dry_run" and "متن خودم" in p.body_preview for p in pubs)
+            mp = s.exec(m.select(m.MediaPost)).one()
+            assert mp.caption == "متن خودم" and mp.used_count == 2
+        assert "حداقل یک اکانت" in client.post("/compose", data={"site_id": site.id, "action": "now"}).text
+        r = client.post("/compose", data={"site_id": site.id, "caption": "برای بعد", "action": "save"})
+        assert "پست‌های آماده" in r.text
+
+        assert "روشن کردن انتشار خودکار" in client.get(f"/sites/{site.id}?tab=campaign").text
+        r = client.post(f"/sites/{site.id}/campaign", data={"daily_limit": "4", "active_hours_start": "9",
+                                                          "active_hours_end": "21", "content_mode": "social",
+                                                          "account_ids": [accs[0].id]})
+        assert "روشن شد" in r.text
+        with m.session() as s:
+            c = s.exec(m.select(m.Campaign)).one()
+            assert (c.daily_limit, c.active_hours_start, c.active_hours_end, c.account_ids) == (4, 9, 21, [accs[0].id])
+            assert c.enabled and c.interval_min_minutes == 108 and c.interval_max_minutes == 252  # 12h / 4 = 180 ±40%
+        r = client.post(f"/campaigns/{c.id}/toggle?next=/sites/{site.id}?tab=campaign")
+        assert "انتشار خودکار" in r.text
+        nav = client.get("/").text
+        assert 'href="/compose"' in nav and 'href="/campaigns"' not in nav.split("</nav>")[0]

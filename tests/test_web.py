@@ -278,9 +278,12 @@ def test_site_form_tags_and_page_rows_in_a_real_browser():
             page.locator("#add_page").click()
             row = page.locator(".page-row").nth(1)
             row.locator("input.ltr").fill("https://melkjet.com/search?type=rent")
-            tag = row.locator(".chips input:not([type=hidden])")
+            tag = row.locator(".chips input:not([type=hidden])").nth(0)
             tag.fill("اجاره آپارتمان، رهن")  # a pasted list with Persian commas also works
             tag.press("Enter")
+            anchor = row.locator(".chips input:not([type=hidden])").nth(1)  # this page's own anchor text
+            anchor.fill("اجاره آپارتمان در تهران")
+            anchor.press("Enter")
             page.locator(".page-row").nth(0).locator(".chip button").click()  # remove the first page's keyword
             page.locator('form[action="/sites"]').evaluate("f => f.dispatchEvent(new Event('submit'))")
             return {
@@ -293,4 +296,5 @@ def test_site_form_tags_and_page_rows_in_a_real_browser():
     got = browser.call(job)
     assert got["keywords"] == "ملک, اجاره, خرید و فروش"
     assert got["anchors"] == "املاک تهران"
-    assert got["pages"] == "https://melkjet.com/search\nhttps://melkjet.com/search?type=rent | اجاره آپارتمان, رهن"
+    assert got["pages"] == ("https://melkjet.com/search\n"
+                            "https://melkjet.com/search?type=rent | اجاره آپارتمان, رهن | اجاره آپارتمان در تهران")

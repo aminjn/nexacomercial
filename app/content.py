@@ -63,7 +63,8 @@ def pick_link(site: Site) -> tuple[str, list[str], list[str]]:
         if isinstance(p, str):
             p = {"url": p}
         if p.get("url"):
-            candidates.append((p["url"], p.get("keywords") or site.keywords or [], p.get("anchors") or []))
+            # a page without its own anchor texts uses the site's ones
+            candidates.append((p["url"], p.get("keywords") or site.keywords or [], p.get("anchors") or site.anchors or []))
     url, kws, anchors = random.choice(candidates)
     return url, kws, anchors
 

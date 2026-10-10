@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block body %}
+{% if not sites %}<div class="card"><h2>پست جدید</h2><p>اول یک <a href="/sites">سایت</a> اضافه کن.</p></div>
+{% else %}
+<form method="post" action="/compose" enctype="multipart/form-data" class="card" id="compose">
+  <h2>پست جدید</h2>
+  <p class="muted" style="font-size:13px">همه‌چیز همین‌جاست: سایت را انتخاب کن، اگر خواستی عکس و متن بگذار، اکانت‌ها را تیک بزن و منتشر کن. اگر متن را خالی بگذاری، هوش مصنوعی برای هر پلتفرم متن مناسب همان را می‌نویسد.</p>
+
+  <div class="step"><b>۱. کدام سایت؟</b>
+    <select name="site_id" id="site_id" style="max-width:420px">{% for s in sites %}<option value="{{ s.id }}" {{ 'selected' if current and s.id == current.id }}>{{ s.name }} — {{ s.url }}</option>{% endfor %}</select></div>
+
+  <div class="step"><b>۲. عکس و متن (هر دو اختیاری)</b>
+    <div class="grid" style="grid-template-columns:minmax(200px,260px) 1fr">
+      <label class="drop" id="drop"><input type="file" name="image_file" id="image_file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        <img id="preview" alt="" hidden><span id="drop_text">عکس را این‌جا بکش یا بزن تا انتخاب کنی<br><small class="muted">برای اینستاگرام و پینترست لازم است</small></span></label>
+      <div>
+        <textarea name="caption" rows="7" placeholder="متن پست با هشتگ‌ها… (خالی = هوش مصنوعی می‌نویسد)"></textarea>
+        <label style="margin-top:8px"><span>لینک به کدام صفحه‌ی سایت؟</span>
+          <select name="link_url" id="link_url"><option value="">خودکار (یکی از صفحه‌های سایت)</option></select></label>
+      </div>
+    </div></div>
+
+  <div class="step"><b>۳. کجا منتشر شود؟</b>
+    {% include "_pick_accounts.html" %}</div>
+
+  <div class="actions">
+    <button name="action" value="now">همین الان منتشر کن</button>
+    <button name="action" value="preview" class="sec">پیش‌نمایش (بدون انتشار)</button>
+    <button name="action" value="save" class="sec">فقط ذخیره برای کمپین خودکار</button>
+  </div>
+  {% if settings.dry_run %}<p class="dry_run" style="font-size:12px">حالت آزمایشی (DRY RUN) روشن است: «همین الان منتشر کن» هم فقط پیش‌نمایش می‌سازد. در <a href="/settings">تنظیمات</a> خاموشش کن.</p>{% endif %}
+</form>
+{% endif %}
+<style>
+.step{margin:14px 0}.step > b{display:block;margin-bottom:6px}
+.drop{display:flex;align-items:center;justify-content:center;text-align:center;border:2px dashed var(--line);border-radius:10px;min-height:180px;cursor:pointer;background:var(--bg);overflow:hidden;padding:8px}
+.drop.over{border-color:var(--acc)}.drop img{max-width:100%;max-height:220px;object-fit:contain;background:#fff;border-radius:6px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+</style>
+<script>
+const PAGES = {{ site_pages|tojson }};
+const siteSel = document.getElementById('site_id'), linkSel = document.getElementById('link_url');
+function fillPages(){
+  linkSel.length = 1;
+  for (const u of PAGES[siteSel.value] || []) { const o = document.createElement('option'); o.value = o.textContent = u; linkSel.appendChild(o); }
+}
+if (siteSel) { siteSel.addEventListener('change', fillPages); fillPages(); }
+const drop = document.getElementById('drop'), file = document.getElementById('image_file');
+function show(f){ if (!f) return; const img = document.getElementById('preview'); img.src = URL.createObjectURL(f); img.hidden = false; document.getElementById('drop_text').hidden = true; }
+if (drop) {
+  file.addEventListener('change', () => show(file.files[0]));
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) { file.files = e.dataTransfer.files; show(file.files[0]); } });
+}
+</script>
+{% endblock %}

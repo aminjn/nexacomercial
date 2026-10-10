@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import secrets
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -277,12 +278,13 @@ def sites_page(request: Request, edit: int = 0):
 
 
 def _parse_pages(text: str) -> list[dict[str, Any]]:
-    """One page per line: `address` or `address | keyword, keyword` (that page's own keywords)."""
+    """One page per line: `address | keyword, keyword | anchor, anchor` (keywords and anchors optional)."""
     pages = []
     for line in text.splitlines():
-        url, _, kws = line.partition("|")
+        url, kws, anchors = (line.split("|") + ["", ""])[:3]
         if url.strip():
-            pages.append({"url": url.strip(), **({"keywords": _list(kws)} if kws.strip() else {})})
+            pages.append({"url": url.strip(), **({"keywords": _list(kws)} if kws.strip() else {}),
+                          **({"anchors": _list(anchors)} if anchors.strip() else {})})
     return pages
 
 
@@ -500,6 +502,94 @@ def ga_key_event():
     return back("/settings?at=ga#ga", _ensure_goals())
 
 
+# ---------------------------------------------------------------- «پست جدید»: one form → one or many accounts
+
+
+def _account_groups(s: Any) -> list[tuple[str, list[m.Account]]]:
+    """Usable accounts grouped by platform, for the account checkboxes."""
+    groups: dict[str, list[m.Account]] = {}
+    for a in s.exec(select(m.Account).where(m.Account.enabled == True).order_by(m.Account.kind)).all():  # noqa: E712
+        groups.setdefault(PLATFORM_NAMES.get(stats.base_kind(a.kind), a.kind), []).append(a)
+    return sorted(groups.items())
+
+
+@app.get("/compose", response_class=HTMLResponse, dependencies=protected)
+def compose_page(request: Request, site: int = 0):
+    with m.session() as s:
+        sites = s.exec(select(m.Site).order_by(m.Site.id)).all()
+        groups = _account_groups(s)
+    current = next((x for x in sites if x.id == site), sites[0] if sites else None)
+    return render(request, "compose.html", sites=sites, current=current, groups=groups,
+                  site_pages={x.id: [x.url] + [p["url"] if isinstance(p, dict) else p for p in (x.pages or [])]
+                              for x in sites})
+
+
+@app.post("/compose", dependencies=protected)
+async def compose_submit(request: Request):
+    form = await request.form()
+    f = {k: v for k, v in form.items() if isinstance(v, str)}
+    site_id, action = int(f.get("site_id") or 0), f.get("action", "now")
+    account_ids = [int(x) for x in form.getlist("account_ids")]
+    if not site_id:
+        return back("/compose", "سایت را انتخاب کن")
+    upload = form.get("image_file")
+    image = ""
+    if upload is not None and not isinstance(upload, str) and upload.filename:
+        try:
+            image = await save_image(upload, request)
+        except ValueError as e:
+            return back(f"/compose?site={site_id}", str(e))
+    caption, link = f.get("caption", "").strip(), f.get("link_url", "").strip()
+    media_id = None
+    if image or caption:  # kept in the site's ready posts, so automatic posting can reuse it too
+        with m.session() as s:
+            if not image:  # caption without a new image: reuse the site's latest image, if any
+                last = s.exec(select(m.MediaPost).where(m.MediaPost.site_id == site_id)
+                              .order_by(m.MediaPost.id.desc())).first()
+                image = last.image_url if last else (s.get(m.Site, site_id).image_url or "")
+            mp = m.MediaPost(site_id=site_id, image_url=image, caption=caption, link_url=link)
+            s.add(mp)
+            s.commit()
+            media_id = mp.id
+    if action == "save":
+        return back(f"/sites/{site_id}?tab=posts", "پست به پست‌های آماده‌ی سایت اضافه شد؛ کمپین خودکار از آن استفاده می‌کند")
+    if not account_ids:
+        return back(f"/compose?site={site_id}", "حداقل یک اکانت را تیک بزن")
+    dry = action == "preview"
+    # browser accounts take a minute each: publish in the background and show the results on the site page
+    threading.Thread(target=engine.publish_many, args=(site_id, account_ids),
+                     kwargs={"media_id": media_id, "dry_run": True if dry else None}, daemon=True).start()
+    word = "پیش‌نمایش" if dry else "انتشار"
+    return back(f"/sites/{site_id}?tab=summary&running=1",
+                f"{word} در {len(account_ids)} اکانت شروع شد؛ نتیجه‌ها چند ثانیه تا چند دقیقه دیگر پایین همین صفحه می‌آید")
+
+
+@app.post("/sites/{site_id}/campaign", dependencies=protected)
+async def site_campaign_save(site_id: int, request: Request):
+    """The simple campaign form on the site page: accounts, posts per day, hours, content type."""
+    form = await request.form()
+    f = {k: v for k, v in form.items() if isinstance(v, str)}
+    site = _get(m.Site, site_id)
+    per_day = max(1, int(f.get("daily_limit") or 3))
+    start, end = int(f.get("active_hours_start") or 9), int(f.get("active_hours_end") or 22)
+    window = ((end - start) % 24 or 24) * 60
+    gap = max(15, window // per_day)  # spread the posts over the active hours, with some randomness
+    with m.session() as s:
+        c = s.get(m.Campaign, int(f["id"])) if f.get("id") else m.Campaign(name=f"{site.name} — خودکار", site_id=site_id)
+        c.account_ids = [int(x) for x in form.getlist("account_ids")]
+        if not c.account_ids:
+            return back(f"/sites/{site_id}?tab=campaign", "حداقل یک اکانت را تیک بزن")
+        c.name = f.get("name", "").strip() or c.name
+        c.daily_limit, c.active_hours_start, c.active_hours_end = per_day, start, end
+        c.interval_min_minutes, c.interval_max_minutes = round(gap * 0.6), round(gap * 1.4)
+        c.content_mode = f.get("content_mode", "both")
+        c.enabled = True
+        c.next_run_at = c.next_run_at or m.utcnow()
+        s.add(c)
+        s.commit()
+    return back(f"/sites/{site_id}?tab=campaign", "کمپین ذخیره و روشن شد ✓ از این به بعد خودکار پست می‌گذارد")
+
+
 # ---------------------------------------------------------------- one site: summary / instagram / publications / posts
 
 PLATFORM_NAMES = {
@@ -548,8 +638,10 @@ def site_page(request: Request, site_id: int, tab: str = "summary"):
         row["clicks"] += p.clicks or 0
         row["articles"] += p.category == "article"
         row["live"] += bool(p.link_found)
-    tabs = {"summary": "خلاصه و آمار", **{k: f"{v['name']} ({v['ok']})" for k, v in platforms.items()},
-            "posts": f"پست‌های آماده ({len(posts)})"}
+    tabs = {"summary": "خلاصه و آمار", "campaign": f"کمپین خودکار ({len(campaigns)})",
+            **{k: f"{v['name']} ({v['ok']})" for k, v in platforms.items()}, "posts": f"پست‌های آماده ({len(posts)})"}
+    with m.session() as s:
+        groups = _account_groups(s)
     tab = tab if tab in tabs else "summary"
     summary = {
         "ok": len(ok), "errors": sum(1 for p in pubs if p.status == "error"),
@@ -559,7 +651,8 @@ def site_page(request: Request, site_id: int, tab: str = "summary"):
     }
     return render(request, "site.html", site=site, tab=tab, tabs=tabs, platforms=platforms,
                   current=platforms.get(tab), posts=posts, campaigns=campaigns, summary=summary,
-                  by_page=sorted(by_page.items(), key=lambda kv: -kv[1]["pubs"]),
+                  by_page=sorted(by_page.items(), key=lambda kv: -kv[1]["pubs"]), groups=groups, recent=pubs[:12],
+                  running=bool(request.query_params.get("running")),
                   per_day=per_day, max_day=max(per_day.values()) or 1, sites={site.id: site})
 
 
@@ -844,11 +937,12 @@ async def campaign_save(request: Request):
 
 
 @app.post("/campaigns/{campaign_id}/{action}", dependencies=protected)
-def campaign_action(campaign_id: int, action: str):
+def campaign_action(campaign_id: int, action: str, next: str = "/campaigns"):
+    nxt = next if next.startswith("/") else "/campaigns"
     if action in ("run", "preview"):
         rec = engine.run_campaign(campaign_id, force=True, dry_run=True if action == "preview" else None)
         msg = f"{rec.status}: {rec.url or rec.error or rec.title}" if rec else "اکانت آماده‌ای پیدا نشد (cooldown/سهمیه)"
-        return back("/campaigns", msg)
+        return back(nxt, msg)
     with m.session() as s:
         c = s.get(m.Campaign, campaign_id)
         if c is None:
@@ -861,7 +955,7 @@ def campaign_action(campaign_id: int, action: str):
         else:
             raise HTTPException(400)
         s.commit()
-    return back("/campaigns", "انجام شد")
+    return back(nxt, "انجام شد")
 
 
 # ---------------------------------------------------------------- publications + JSON API

@@ -93,7 +93,7 @@ def category_order(c: m.Campaign) -> list[str]:
 
 
 def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = None,
-            dry_run: bool | None = None) -> m.Publication:
+            dry_run: bool | None = None, media_id: int | None = None) -> m.Publication:
     """Generate one article / social post for `site` and publish it through `account`."""
     dry = settings.dry_run if dry_run is None else dry_run
     extra = campaign.extra_instructions if campaign else ""
@@ -123,8 +123,8 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             stage = "publish"
             res = None if dry else pub.publish_article(art)
         else:
-            with m.session() as s:
-                media = m.pick_media(s, site.id)  # ready image (+ caption) from the «پست‌ها» page
+            with m.session() as s:  # this exact post (from «پست جدید») or the next ready image of the site
+                media = s.get(m.MediaPost, media_id) if media_id else m.pick_media(s, site.id)
             if media and media.caption.strip():
                 post = SocialPost(text=media.caption.strip(), link_url=media.link_url or pick_link(site)[0],
                                   title=site.name, image_url=media.image_url, site_id=site.id)
@@ -212,6 +212,18 @@ def explain_error(stage: str, kind: str, e: Exception) -> str:
     else:
         todo = ""
     return " ".join(x for x in (f"[{where}]", why, todo, f"— {raw}") if x)
+
+
+def publish_many(site_id: int, account_ids: list[int], *, media_id: int | None = None,
+                 dry_run: bool | None = None) -> list[m.Publication]:
+    """«پست جدید»: the same post through several accounts, one after another (browser accounts take a while)."""
+    out = []
+    with m.session() as s:
+        site = s.get(m.Site, site_id)
+        accounts = [a for a in (s.get(m.Account, i) for i in account_ids) if a]
+    for acc in accounts:
+        out.append(publish(site, acc, dry_run=dry_run, media_id=media_id))
+    return out
 
 
 def run_campaign(campaign_id: int, *, force: bool = False, dry_run: bool | None = None) -> m.Publication | None:
