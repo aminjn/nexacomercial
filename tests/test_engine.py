@@ -473,3 +473,33 @@ def test_public_stats_for_each_platform(monkeypatch):
     assert got["devto_web"][1:3] == (4, 2) and got["mastodon_web"][1:] == (5, 1, 2) and got["bluesky"][1:] == (9, 0, 1)
     assert got["reddit_web"][1:3] == (17, 6) and got["writeas"][0] == 8
     assert got["wordpress"][2] == 3 and got["blogger"][2] == 4 and got["linkedin_web"] == (None, None, None, None)
+
+
+def test_site_pages_with_keywords_and_merge():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with TestClient(app) as client:
+        client.post("/sites", data={"name": "ملکجت", "url": "https://melkjet.com/", "keywords": "ملک، اجاره", "enabled": "1",
+                                    "pages": "https://melkjet.com/search | جستجوی هوشمند، جستجوی ملک\nhttps://melkjet.com/about"})
+        client.post("/sites", data={"name": "ملکجت / اجاره", "url": "https://melkjet.com/search?type=rent",
+                                    "keywords": "اجاره آپارتمان", "enabled": "1"})
+        with m.session() as s:
+            main, rent = sorted(s.exec(m.select(m.Site)).all(), key=lambda x: x.id)
+            assert main.pages == [{"url": "https://melkjet.com/search", "keywords": ["جستجوی هوشمند", "جستجوی ملک"]},
+                                  {"url": "https://melkjet.com/about"}]
+            s.add(m.Publication(site_id=rent.id, account_id=1, status="ok", category="social", clicks=4,
+                                link_url="https://melkjet.com/search?type=rent&utm_source=telegram&utm_medium=social"))
+            s.add(m.MediaPost(site_id=rent.id, image_url="https://x/media/a.jpg"))
+            s.commit()
+        assert "https://melkjet.com/search | جستجوی هوشمند، جستجوی ملک" in client.get(f"/sites?edit={main.id}").text
+        r = client.post(f"/sites/{rent.id}/merge", data={"target_id": main.id})
+        assert "ادغام شد" in r.text
+        page = client.get(f"/sites/{main.id}").text
+        assert "melkjet.com/search?type=rent" in page and "به تفکیک صفحه" in page
+    with m.session() as s:
+        sites = s.exec(m.select(m.Site)).all()
+        assert len(sites) == 1 and {"url": "https://melkjet.com/search?type=rent", "keywords": ["اجاره آپارتمان"]} in sites[0].pages
+        assert "اجاره آپارتمان" in sites[0].keywords
+        assert s.exec(m.select(m.Publication)).one().site_id == main.id
+        assert s.exec(m.select(m.MediaPost)).one().site_id == main.id

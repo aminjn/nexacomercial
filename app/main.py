@@ -273,11 +273,23 @@ def sites_page(request: Request, edit: int = 0):
         sites = s.exec(select(m.Site)).all()
         counts = {x.id: m.count_since(s, dt.datetime.min, site_id=x.id, status="ok") for x in sites}
     current = next((x for x in sites if x.id == edit), None)
-    return render(request, "sites.html", sites=sites, counts=counts, current=current)
+    return render(request, "sites.html", sites=sites, counts=counts, current=current,
+                  pages_text="\n".join((p.get("url", "") + (" | " + "، ".join(p["keywords"]) if p.get("keywords") else ""))
+                                       if isinstance(p, dict) else str(p) for p in (current.pages or [])) if current else "")
+
+
+def _parse_pages(text: str) -> list[dict[str, Any]]:
+    """One page per line: `address` or `address | keyword, keyword` (that page's own keywords)."""
+    pages = []
+    for line in text.splitlines():
+        url, _, kws = line.partition("|")
+        if url.strip():
+            pages.append({"url": url.strip(), **({"keywords": _list(kws)} if kws.strip() else {})})
+    return pages
 
 
 def _site_from_form(f: dict[str, str], site: m.Site | None = None) -> m.Site:
-    pages = [{"url": u} for u in f.get("pages", "").split()]
+    pages = _parse_pages(f.get("pages", ""))
     data = dict(name=f["name"].strip(), url=f["url"].strip(), language=f.get("language", "fa").strip() or "fa",
                 niche=f.get("niche", ""), description=f.get("description", ""), keywords=_list(f.get("keywords", "")),
                 anchors=_list(f.get("anchors", "")), pages=pages, style=f.get("style", ""), enabled=bool(f.get("enabled")),
@@ -359,6 +371,36 @@ async def sites_import(request: Request):
         text = (await f["file"].read()).decode("utf-8-sig") or text
     n, errors = importer.import_sites(str(text))
     return back("/sites", f"{n} سایت اضافه شد" + (f" — خطاها: {'; '.join(errors[:10])}" if errors else ""))
+
+
+@app.post("/sites/{site_id}/merge", dependencies=protected)
+async def site_merge(site_id: int, request: Request):
+    """Turn a "site" that is really another page of the same website into a deep page of the main site:
+    its address + keywords become a page there and all its history (posts, campaigns, clicks) moves along."""
+    target_id = int((await request.form()).get("target_id") or 0)
+    if target_id == site_id:
+        return back("/sites", "یک سایت را نمی‌شود در خودش ادغام کرد")
+    with m.session() as s:
+        src, dst = s.get(m.Site, site_id), s.get(m.Site, target_id)
+        if not src or not dst:
+            raise HTTPException(404)
+        pages = list(dst.pages or [])
+        known = {(p.get("url") if isinstance(p, dict) else p) for p in pages} | {dst.url}
+        for p in [{"url": src.url, "keywords": src.keywords or []}] + [
+                p if isinstance(p, dict) else {"url": p} for p in (src.pages or [])]:
+            if p.get("url") and p["url"] not in known:
+                pages.append(p)
+                known.add(p["url"])
+        dst.pages = pages
+        dst.keywords = list(dict.fromkeys((dst.keywords or []) + (src.keywords or [])))
+        for model in (m.Publication, m.MediaPost, m.Campaign, m.Click):
+            for row in s.exec(select(model).where(model.site_id == site_id)).all():
+                row.site_id = target_id
+                s.add(row)
+        s.add(dst)
+        s.delete(src)
+        s.commit()
+    return back(f"/sites/{target_id}", f"«{src.name}» به‌عنوان یک صفحه‌ی «{dst.name}» ادغام شد؛ همه‌ی سابقه‌اش هم منتقل شد")
 
 
 @app.post("/sites/{site_id}/delete", dependencies=protected)
@@ -500,6 +542,14 @@ def site_page(request: Request, site_id: int, tab: str = "summary"):
         row["live"] += bool(p.link_found)
         if p.status == "ok" and (row["last"] is None or p.created_at > row["last"]):
             row["last"] = p.created_at
+    by_page: dict[str, dict[str, Any]] = {}  # which page of the site got the links / clicks
+    for p in ok:
+        url = (p.link_url or "").split("?utm_")[0].split("&utm_")[0] or site.url
+        row = by_page.setdefault(url, {"pubs": 0, "clicks": 0, "articles": 0, "live": 0})
+        row["pubs"] += 1
+        row["clicks"] += p.clicks or 0
+        row["articles"] += p.category == "article"
+        row["live"] += bool(p.link_found)
     tabs = {"summary": "خلاصه و آمار", **{k: f"{v['name']} ({v['ok']})" for k, v in platforms.items()},
             "posts": f"پست‌های آماده ({len(posts)})"}
     tab = tab if tab in tabs else "summary"
@@ -511,6 +561,7 @@ def site_page(request: Request, site_id: int, tab: str = "summary"):
     }
     return render(request, "site.html", site=site, tab=tab, tabs=tabs, platforms=platforms,
                   current=platforms.get(tab), posts=posts, campaigns=campaigns, summary=summary,
+                  by_page=sorted(by_page.items(), key=lambda kv: -kv[1]["pubs"]),
                   per_day=per_day, max_day=max(per_day.values()) or 1, sites={site.id: site})
 
 

@@ -31,9 +31,11 @@
   <div class="grid">
     <label><span>کلمات کلیدی (با کاما جدا کن)</span><textarea name="keywords">{{ (current.keywords or [])|join(', ') if current }}</textarea></label>
     <label><span>انکرتکست‌های دلخواه (اختیاری)</span><textarea name="anchors">{{ (current.anchors or [])|join(', ') if current }}</textarea></label>
-    <label><span>صفحات عمقی که لینک بگیرند (هر خط یک آدرس)</span><textarea name="pages" class="ltr">{% if current %}{% for p in current.pages or [] %}{{ p.url }}
-{% endfor %}{% endif %}</textarea></label>
   </div>
+  <label><span>صفحه‌های دیگر همین سایت که لینک بگیرند — هر خط یک صفحه (لازم نیست برای هر صفحه یک سایت جدا بسازی)</span>
+    <textarea name="pages" rows="6" spellcheck="false" placeholder="https://melkjet.com/search?type=rent | اجاره آپارتمان، رهن و اجاره
+https://melkjet.com/search | جستجوی هوشمند ملک">{{ pages_text }}</textarea>
+    <small class="help">قالب هر خط: <code>آدرس صفحه | کلمات کلیدی همان صفحه</code> (کلمات اختیاری است؛ خالی = کلمات کلیدی بالا). هر پست به‌صورت تصادفی به صفحه‌ی اصلی یا یکی از این صفحه‌ها لینک می‌دهد و متنش را بر اساس کلمات همان صفحه می‌نویسد. آمار هر صفحه جدا در صفحه‌ی سایت دیده می‌شود.</small></label>
   <details class="guide" {{ 'open' if current and current.ga_property_id }} style="margin:8px 0"><summary>گوگل آنالیتیکس این سایت (اختیاری، یک بار)</summary>
     <p class="muted" style="font-size:12px">کلیک‌های لینک‌های این سایت به آنالیتیکس همین سایت فرستاده می‌شود و هدف <code>nexa_click</code> خودکار در آن ساخته می‌شود. لازم نیست برای هیچ لینکی جداگانه کاری بکنی.</p>
     <div class="grid">
@@ -49,7 +51,15 @@
   <label><span>لحن / سبک نوشتن (اختیاری)</span><input name="style" value="{{ current.style if current }}"></label>
   <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if not current or current.enabled }}> فعال</label>
   <button>ذخیره</button> {% if current %}<a href="/sites">انصراف</a>{% endif %}
-</form></div>
+</form>
+{% if current and sites|length > 1 %}
+<form method="post" action="/sites/{{ current.id }}/merge" class="guide" style="margin-top:14px" onsubmit="return confirm('این سایت حذف و به‌عنوان یک صفحه‌ی سایت انتخاب‌شده اضافه شود؟ سابقه‌ی انتشار، پست‌ها و کمپین‌هایش منتقل می‌شود.')">
+  <b>این در واقع یک صفحه از سایت دیگری است؟</b>
+  <p class="muted" style="font-size:12px;margin:4px 0">آدرس و کلمات کلیدی «{{ current.name }}» به صفحه‌های سایت انتخاب‌شده اضافه می‌شود و همه‌ی انتشارها، پست‌های آماده، کمپین‌ها و کلیک‌هایش به آن منتقل می‌شود.</p>
+  <select name="target_id" style="width:auto">{% for s in sites if s.id != current.id %}<option value="{{ s.id }}">{{ s.name }} — {{ s.url }}</option>{% endfor %}</select>
+  <button class="sec">ادغام در این سایت</button>
+</form>{% endif %}
+</div>
 
 <div class="card"><h2>ورود گروهی سایت‌ها (CSV یا JSON)</h2>
 <p class="muted">ستون‌ها: <code>name,url,language,niche,description,keywords,anchors,pages,image_url,style</code> — داخل keywords/pages با <code>|</code> جدا کن.</p>
