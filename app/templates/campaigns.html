@@ -8,7 +8,7 @@
     <td>{{ {'both':'مقاله + سوشیال','article':'فقط مقاله','social':'فقط سوشیال'}[c.content_mode] }}</td>
     <td class="muted">{% if c.account_ids %}{{ c.account_ids|length }} اکانت{% endif %}{% if c.account_tag %} گروه «{{ c.account_tag }}»{% endif %}{% if c.kinds %} [{{ c.kinds|join(', ') }}]{% endif %}{% if not c.account_ids and not c.account_tag and not c.kinds %}همه{% endif %}</td>
     <td>هر {{ c.interval_min_minutes }} تا {{ c.interval_max_minutes }} دقیقه</td>
-    <td>{{ c.days_of_week|length }} روز، {{ c.active_hours_start }}–{{ c.active_hours_end }}{% if c.start_date or c.end_date %}<div class="muted">{{ c.start_date or '' }} تا {{ c.end_date or '' }}</div>{% endif %}</td>
+    <td>{{ c.days_of_week|length }} روز، {{ c.active_hours_start }}–{{ c.active_hours_end }}{% if c.start_date or c.end_date %}<div class="muted">{{ c.start_date|jdate }} تا {{ c.end_date|jdate }}</div>{% endif %}</td>
     <td>{{ c.daily_limit }}/روز{% if c.total_limit %}، کل {{ c.total_limit }}{% endif %}</td><td>{{ c.next_run_at|local }}</td>
     <td style="white-space:nowrap"><a class="btn" href="/campaigns?edit={{ c.id }}">ویرایش</a>
       <form class="inline" method="post" action="/campaigns/{{ c.id }}/preview"><button class="sec">پیش‌نمایش</button></form>
@@ -35,8 +35,8 @@
     <label><span>حداکثر فاصله (دقیقه) — زمان دقیق تصادفی بین این دو</span><input name="interval_max_minutes" type="number" min="1" value="{{ c.interval_max_minutes if c else 300 }}"></label>
     <label><span>ساعت شروع فعالیت</span><input name="active_hours_start" type="number" min="0" max="23" value="{{ c.active_hours_start if c else 8 }}"></label>
     <label><span>ساعت پایان فعالیت</span><input name="active_hours_end" type="number" min="0" max="24" value="{{ c.active_hours_end if c else 23 }}"></label>
-    <label><span>تاریخ شروع (اختیاری)</span><input name="start_date" type="date" value="{{ c.start_date or '' if c }}"></label>
-    <label><span>تاریخ پایان (اختیاری)</span><input name="end_date" type="date" value="{{ c.end_date or '' if c }}"></label>
+    <label><span>تاریخ شروع (اختیاری)</span><input name="start_date" class="ltr" placeholder="۱۴۰۵/۰۷/۱۸" value="{{ c.start_date|jdate if c }}"></label>
+    <label><span>تاریخ پایان (اختیاری)</span><input name="end_date" class="ltr" placeholder="۱۴۰۵/۰۸/۱۸" value="{{ c.end_date|jdate if c }}"></label>
     <label><span>سقف انتشار روزانه</span><input name="daily_limit" type="number" min="1" value="{{ c.daily_limit if c else 4 }}"></label>
     <label><span>سقف کل (۰ = بی‌نهایت)</span><input name="total_limit" type="number" min="0" value="{{ c.total_limit if c else 0 }}"></label>
   </div>

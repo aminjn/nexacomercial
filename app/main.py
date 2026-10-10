@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from . import browser, engine, ga, importer, runtime, scheduler, stats, tracking, v2ray
+from . import browser, engine, ga, importer, jalali, runtime, scheduler, stats, tracking, v2ray
 from . import models as m
 from .config import settings
 from .publishers import REGISTRY, make
@@ -61,10 +61,11 @@ protected = [Depends(auth)]
 def local(t: dt.datetime | None) -> str:
     if not t:
         return "—"
-    return t.replace(tzinfo=dt.timezone.utc).astimezone(engine.tz()).strftime("%Y-%m-%d %H:%M")
+    return jalali.fmt(t.replace(tzinfo=dt.timezone.utc).astimezone(engine.tz()))
 
 
 templates.env.filters["local"] = local
+templates.env.filters["jdate"] = jalali.fmt_date
 templates.env.globals["checkable"] = engine.checkable
 STATUS_FA = {"ok": "منتشر شد", "error": "خطا", "dry_run": "پیش‌نویس"}
 templates.env.filters["status_fa"] = lambda s: STATUS_FA.get(s, s)
@@ -969,13 +970,17 @@ def campaigns_page(request: Request, edit: int = 0):
 
 
 def _date(v: str) -> dt.date | None:
-    return dt.date.fromisoformat(v) if v else None
+    return jalali.parse(v)
 
 
 @app.post("/campaigns", dependencies=protected)
 async def campaign_save(request: Request):
     form = await request.form()
     f = dict(form)
+    try:
+        _date(f.get("start_date", "")), _date(f.get("end_date", ""))
+    except ValueError as e:
+        return back("/campaigns", str(e))
     lo, hi = int(f.get("interval_min_minutes") or 120), int(f.get("interval_max_minutes") or 300)
     data = dict(
         name=f["name"].strip(), site_id=int(f["site_id"]), enabled=bool(f.get("enabled")),

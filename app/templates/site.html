@@ -32,7 +32,7 @@
   <div class="stat"><span class="muted">لایک / کامنت</span><b>{{ summary.likes }} / {{ summary.comments }}</b></div>
 </div>
 <div class="card"><h2>انتشار موفق در ۱۴ روز اخیر</h2>
-  <div class="bars">{% for d, n in per_day.items() %}<div title="{{ d }}: {{ n }}"><span style="height:{{ (n / max_day * 100)|round }}%"></span><small>{{ n }}</small><em>{{ d.day }}</em></div>{% endfor %}</div>
+  <div class="bars">{% for d, n in per_day.items() %}<div title="{{ d|jdate }}: {{ n }}"><span style="height:{{ (n / max_day * 100)|round }}%"></span><small>{{ n }}</small><em>{{ (d|jdate)[-2:] }}</em></div>{% endfor %}</div>
 </div>
 <div class="card"><h2>به تفکیک صفحه‌ی سایت</h2>
 <table><tr><th>صفحه</th><th>انتشار</th><th>مقاله</th><th>بک‌لینک زنده</th><th>کلیک</th></tr>

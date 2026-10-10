@@ -5,6 +5,7 @@ import logging
 import random
 import re
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import urlparse
 
 import markdown as md
@@ -89,7 +90,12 @@ def pick_anchor(site: Site, url: str, keywords: list[str], anchors: list[str]) -
 ARTICLE_SYSTEM = """You are a senior content writer and SEO specialist.
 Write genuinely useful, original, well-structured articles that a real reader would enjoy.
 Never sound like an advertisement. Never mention that the text is AI-generated.
-Output ONLY a JSON object with keys: title, excerpt, tags (array of 3-6 short strings), body_markdown."""
+Answer in exactly this format and nothing else:
+Title: <the title>
+Excerpt: <one or two sentences>
+Tags: <3-6 short tags, comma separated>
+---
+<the full article in Markdown>"""
 
 ARTICLE_USER = """Language: {lang}
 Topic niche: {niche}
@@ -102,7 +108,7 @@ Avoid these already-written titles: {recent}
 Write an article of 600–900 words in Markdown (use ## headings, short paragraphs, a list where natural).
 Exactly once, in a natural sentence somewhere in the middle of the article, include this exact Markdown link:
 [{anchor}]({link_url})
-Do not add any other links. Do not wrap the JSON in code fences."""
+Do not add any other links. Do not use code fences."""
 
 SOCIAL_SYSTEM = """You are a social media manager. Write short, engaging, non-spammy posts.
 Output ONLY a JSON object with keys: text (the post, without hashtags and without the link), hashtags (array of 3-5 words, no # sign)."""
@@ -140,7 +146,12 @@ SOCIAL_USER_FA = """یک پست برای {platform} بنویس.
 
 ARTICLE_SYSTEM_FA = """تو نویسنده‌ی حرفه‌ای محتوا و متخصص سئو هستی و فارسی روان و طبیعی می‌نویسی.
 مقاله‌هایت واقعاً به خواننده کمک می‌کند، ساختار روشن دارد و شبیه آگهی نیست. هرگز نگو که متن را هوش مصنوعی نوشته.
-فقط یک شیء JSON خروجی بده با کلیدهای title، excerpt، tags (آرایه‌ی ۳ تا ۶ کلمه) و body_markdown."""
+خروجی را دقیقاً در همین قالب بده و هیچ چیز دیگری ننویس:
+عنوان: <عنوان مقاله>
+خلاصه: <یک یا دو جمله>
+برچسب‌ها: <۳ تا ۶ برچسب کوتاه، با کاما جدا>
+---
+<متن کامل مقاله به Markdown>"""
 
 ARTICLE_USER_FA = """موضوع کلی: {niche}
 سایتی که معرفی می‌شود: {site_name} ({site_url}) — {description}
@@ -150,7 +161,7 @@ ARTICLE_USER_FA = """موضوع کلی: {niche}
 یک مقاله‌ی ۶۰۰ تا ۹۰۰ کلمه‌ای به Markdown بنویس: تیترهای ##، پاراگراف‌های کوتاه، و جایی که طبیعی است یک فهرست.
 دقیقاً یک بار، در یک جمله‌ی طبیعی در میانه‌ی مقاله، همین لینک Markdown را بگذار:
 [{anchor}]({link_url})
-هیچ لینک دیگری نگذار. پاراگراف‌ها و جمله‌ها را تکرار نکن. JSON را داخل ``` نگذار."""
+هیچ لینک دیگری نگذار. پاراگراف‌ها و جمله‌ها را تکرار نکن. متن را داخل ``` نگذار."""
 
 ANGLES_FA = ["یک نکته کاربردی", "یک سؤال از مخاطب", "یک آمار یا واقعیت جالب", "یک اشتباه رایج", "معرفی کوتاه", "پیشنهاد امروز"]
 ANGLES_EN = ["a practical tip", "a question to the audience", "an interesting fact", "a common mistake", "a short intro", "today's pick"]
@@ -180,7 +191,7 @@ def generate_article(llm: LLM, site: Site, recent_titles: list[str], extra: str 
         anchor=anchor,
         link_url=link_url,
     )
-    data = parse_json(llm.complete(ARTICLE_SYSTEM_FA if persian else ARTICLE_SYSTEM, prompt, json_mode=True))
+    data = parse_article(llm.complete(ARTICLE_SYSTEM_FA if persian else ARTICLE_SYSTEM, prompt))
     body = clean_article(str(data.get("body_markdown", "")).strip(), link_url)
     body = ensure_link(body, anchor, link_url)
     tags = [str(t).strip() for t in data.get("tags", []) if str(t).strip()][:6]
@@ -193,6 +204,67 @@ def generate_article(llm: LLM, site: Site, recent_titles: list[str], extra: str 
         anchor=anchor,
         site_id=site.id,
     )
+
+
+_HEAD_KEYS = {"title": ("title", "عنوان"), "excerpt": ("excerpt", "خلاصه"),
+              "tags": ("tags", "برچسب‌ها", "برچسب ها", "برچسبها", "برچسب")}
+
+
+def parse_article(text: str) -> dict[str, Any]:
+    """The article from the model's answer: the plain "Title: / Excerpt: / Tags: / --- / body" format,
+    or JSON (also broken JSON from small models: unescaped quotes, cut off before the end)."""
+    text = re.sub(r"^```[a-z]*\s*|\s*```$", "", (text or "").strip())
+    if text.startswith("{"):
+        try:
+            data = parse_json(text)
+            if isinstance(data, dict) and data.get("body_markdown"):
+                return data
+        except ValueError:
+            pass
+        return _loose_json(text)
+    out: dict[str, Any] = {"title": "", "excerpt": "", "tags": []}
+    lines = text.splitlines()
+    body_start = 0
+    for i, line in enumerate(lines):
+        raw = line.strip().strip("*#").strip()
+        if raw in ("---", "***", "___") or re.fullmatch(r"-{3,}", raw):
+            body_start = i + 1
+            break
+        key, sep, val = raw.partition(":")
+        name = next((k for k, names in _HEAD_KEYS.items() if key.strip().strip("*").strip().lower() in names), None)
+        if sep and name:
+            val = val.strip().strip("*").strip()
+            out[name] = [t.strip(" #") for t in re.split(r"[,،]", val) if t.strip(" #")] if name == "tags" else val
+            body_start = i + 1
+        elif raw:  # body started without a --- line
+            break
+    out["body_markdown"] = "\n".join(lines[body_start:]).strip()
+    if not out["title"]:  # no header at all: the first heading is the title
+        m = re.match(r"#+\s*(.+)\n+", out["body_markdown"])
+        if m:
+            out["title"], out["body_markdown"] = m.group(1).strip(), out["body_markdown"][m.end():].strip()
+    return out
+
+
+def _loose_json(text: str) -> dict[str, Any]:
+    def unescape(v: str) -> str:
+        return v.replace("\\n", "\n").replace('\\"', '"').replace("\\t", " ").replace("\\\\", "\\")
+
+    out: dict[str, Any] = {"tags": []}
+    for k in ("title", "excerpt"):
+        m = re.search(r'"' + k + r'"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+        out[k] = unescape(m.group(1)) if m else ""
+    m = re.search(r'"tags"\s*:\s*\[(.*?)\]', text, re.S)
+    if m:
+        out["tags"] = re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))
+    m = re.search(r'"body_markdown"\s*:\s*"', text)
+    if m:
+        rest = text[m.end():].rstrip().rstrip("}").rstrip()
+        rest = rest[:-1] if rest.endswith('"') else rest  # closing quote (missing when the answer was cut off)
+        out["body_markdown"] = unescape(rest).strip()
+    else:
+        out["body_markdown"] = ""
+    return out
 
 
 def ensure_link(body_markdown: str, anchor: str, url: str) -> str:

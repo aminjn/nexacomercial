@@ -61,7 +61,8 @@ class OllamaLLM:
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
-            "options": {"temperature": 0.7},
+            # Ollama's default context (2048–4096 tokens) cuts a long Persian article off mid-way
+            "options": {"temperature": 0.7, "num_ctx": 8192},
         }
         if json_mode:
             body["format"] = "json"

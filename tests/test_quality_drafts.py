@@ -97,3 +97,17 @@ def test_old_draft_without_stored_content_is_rebuilt():
     assert d["text"] == "متن اصلی پست" and d["hashtags"] == ["سئو", "بک_لینک"] and d["link_url"] == "https://x.com/a"
     a = m.Publication(site_id=1, account_id=1, category="article", status="dry_run", title="T", body_preview="body")
     assert engine.draft_of(a)["title"] == "T" and engine.draft_of(a)["body_markdown"] == "body"
+
+
+def test_parse_article_formats():
+    from app.content import parse_article
+    plain = "عنوان: خرید ملک\nخلاصه: راهنما\nبرچسب‌ها: ملک، خرید, اجاره\n---\n## مقدمه\n\nمتن \"با\" نقل‌قول"
+    d = parse_article(plain)
+    assert d["title"] == "خرید ملک" and d["tags"] == ["ملک", "خرید", "اجاره"]
+    assert d["body_markdown"].startswith("## مقدمه") and '"با"' in d["body_markdown"]
+    # JSON with an unescaped quote in the body, cut off before the end (the dev.to error)
+    broken = '{\n"title": "T",\n"excerpt": "E",\n"tags": ["a", "b"],\n"body_markdown": "## H\\n\\nمتن "بد" و ادامه'
+    d = parse_article(broken)
+    assert d["title"] == "T" and d["tags"] == ["a", "b"] and 'متن "بد" و ادامه' in d["body_markdown"]
+    d = parse_article("# تیتر\n\nبدنه")
+    assert d["title"] == "تیتر" and d["body_markdown"] == "بدنه"
