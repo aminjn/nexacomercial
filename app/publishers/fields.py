@@ -335,6 +335,10 @@ WEB_FIELDS: dict[str, list[F]] = {
     "medium_web": [_HANDLE],
     "tumblr_web": [_HANDLE, ("blog", False, "اسم وبلاگ", "اختیاری؛ اگر چند وبلاگ داری، اسم همانی که باید در آن پست شود.")],
     "devto_web": [_HANDLE],
+    "blogger_web": [("blog_url", True, "آدرس وبلاگ", "همان آدرسی که وبلاگت با آن باز می‌شود، مثل dordorgroup.blogspot.com"),
+                    ("blog_id", False, "شناسه‌ی وبلاگ (Blog ID)",
+                     "اگر چند وبلاگ داری: عدد بلندِ آدرس صفحه‌ی بلاگر وقتی آن وبلاگ باز است، مثل "
+                     "blogger.com/blog/posts/2351897898705520203 ← همان عدد. یک وبلاگ داری؟ خالی بگذار.")],
 }
 WEB_LOGIN_STEPS = [
     "همین فرم را ذخیره کن (رمز و توکن لازم نیست).",
@@ -367,6 +371,19 @@ KIND_GUIDES["blogger_email"] = {
 for _k in WEB_FIELDS:
     KIND_GUIDES[_k] = {"summary": "ورود با نام کاربری و رمز خودت، بدون API و توکن.", "steps": WEB_LOGIN_STEPS,
                        "links": [], "notes": WEB_NOTE}
+KIND_GUIDES["blogger_web"] = {
+    "summary": "بلاگر با حساب گوگل خودت؛ بدون ایمیل فرستنده، بدون توکن.",
+    "steps": [
+        "آدرس وبلاگ را بنویس و این فرم را ذخیره کن.",
+        "در کروم خودت وارد blogger.com شو (داخل حسابت باشی).",
+        "در لیست اکانت‌ها دکمه‌ی «ورود با کوکی» همین اکانت را بزن و طبق راهنمای همان صفحه از افزونه‌ی Cookie-Editor "
+        "یک بار در blogger.com و یک بار در accounts.google.com ‏Export ← JSON بگیر و هر دو را ذخیره کن.",
+        "«تست» را بزن. اگر بعداً گفت نشست منقضی شده، فقط مرحله‌ی ۲ و ۳ را تکرار کن.",
+    ],
+    "links": [("Blogger", "https://www.blogger.com/")],
+    "notes": "گوگل ورود مستقیم روی سرور را قبول نمی‌کند («Couldn’t sign you in»)؛ برای همین این‌جا «ورود با مرورگر» را نزن، "
+             "فقط «ورود با کوکی». در کروم خودت از حساب گوگل Log out نکن، وگرنه کوکی‌ها باطل می‌شوند.",
+}
 
 SECRET_HINTS = ("token", "secret", "password", "key", "blog_email")
 

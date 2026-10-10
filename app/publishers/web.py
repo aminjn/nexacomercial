@@ -490,6 +490,55 @@ class MediumWeb(WebPublisher):
 
 
 @register
+class BloggerWeb(WebPublisher):
+    """Blogger through your own Google login (cookies from your browser: Google refuses logins on servers)."""
+
+    kind = "blogger_web"
+    category = "article"
+    login_url = "https://www.blogger.com/"
+    login_markers = ("accounts.google.com", "/ServiceLogin", "blogger.com/about")
+
+    def blog_id(self) -> str:
+        m = re.search(r"(\d{10,})", self.opt("blog_id") or "")
+        return m.group(1) if m else ""
+
+    def publish_article(self, article: Article) -> PublishResult:
+        bid = self.blog_id()
+
+        def recipe(page: Any) -> PublishResult:
+            self.goto(page, f"https://www.blogger.com/blog/posts/{bid}" if bid else "https://www.blogger.com/")
+            m = re.search(r"/blog/posts/(\d+)", page.url)
+            blog = bid or (m.group(1) if m else "")
+            self.first(page, '[aria-label="Create new post"]', '[aria-label="New Post"]',
+                       '[role="button"]:has-text("New Post")', '[role="button"]:has-text("پست جدید")').click()
+            page.wait_for_url(re.compile(r"/blog/post/(edit|create)/"), timeout=60_000)
+            title = self.first(page, 'input[aria-label="Title"]', 'input[aria-label="عنوان"]', 'input[placeholder="Title"]')
+            title.fill(article.title)
+            frame = page.frame_locator("iframe.editable, iframe[title*='Rich']").first
+            body = frame.locator("body")
+            body.wait_for(timeout=30_000)
+            body.click()
+            body.evaluate("(b, html) => b.ownerDocument.execCommand('insertHTML', false, html)", article.body_html)
+            page.wait_for_timeout(2500)
+            self.first(page, '[aria-label="Publish"]', '[aria-label="انتشار"]').click()
+            try:  # "Publish post?" confirmation
+                self.first(page, '[role="dialog"] [role="button"]:has-text("Confirm")',
+                           '[role="dialog"] [role="button"]:has-text("تأیید")', timeout=8_000).click()
+            except PublishError:
+                pass
+            page.wait_for_url(re.compile(r"/blog/posts/"), timeout=90_000)
+            blog_url = (self.opt("blog_url") or "").strip().rstrip("/")
+            url = ""
+            if blog_url:
+                from .articles import BloggerEmail
+                url, _ = BloggerEmail(self.o).find_post(blog_url if "://" in blog_url else "https://" + blog_url,
+                                                        article.title, tries=4, wait=5)
+            return PublishResult(url=url or (blog_url or f"https://www.blogger.com/blog/posts/{blog}"))
+
+        return self.run(recipe)
+
+
+@register
 class TumblrWeb(WebPublisher):
     kind = "tumblr_web"
     category = "article"

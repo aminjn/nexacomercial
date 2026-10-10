@@ -333,3 +333,23 @@ def test_cookie_login_page():
         r = client.get(f"/accounts/{aid}/cookies")
         assert r.status_code == 200 and "Cookie-Editor" in r.text
         assert "ورود با کوکی" in client.get("/accounts").text
+
+
+def test_blogger_recipe():
+    a = account("blogger_web", blog_id="https://www.blogger.com/blog/posts/123456789012")
+    logged_in(a, ".blogger.com")
+    PAGES["https://www.blogger.com/blog/posts/"] = """<div role="button" aria-label="Create new post"
+      onclick="location.href='/blog/post/edit/123456789012/999'">NEW POST</div>"""
+    PAGES["https://www.blogger.com/blog/post/edit/"] = """<input aria-label="Title" id="t">
+      <iframe class="editable" srcdoc="<body contenteditable=true></body>"></iframe>
+      <div role="button" aria-label="Publish" onclick="document.body.insertAdjacentHTML('beforeend',
+        '<div role=dialog><div role=button id=c>Confirm</div></div>');
+        document.getElementById('c').onclick=()=>fetch('/save',{method:'POST',body:document.getElementById('t').value+'|'+
+          document.querySelector('iframe').contentDocument.body.innerHTML}).then(()=>location.href='/blog/posts/123456789012')">Publish</div>"""
+    PAGES["https://www.blogger.com/save"] = "ok"
+    art = Article(title="عنوان", body_markdown="متن [ملک](https://example.com/p)", excerpt="", tags=[],
+                  link_url="https://example.com/p", anchor="ملک", site_id=1)
+    res = make("blogger_web", {**a.creds, "_account_id": a.id}).publish_article(art)
+    assert res.url == "https://www.blogger.com/blog/posts/123456789012"
+    body = POSTED[0]["body"]
+    assert body.startswith("عنوان|") and 'href="https://example.com/p"' in body

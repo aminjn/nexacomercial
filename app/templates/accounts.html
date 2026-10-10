@@ -20,8 +20,8 @@
       <form class="inline" method="post" action="/accounts/{{ a.id }}/test" onsubmit="return confirm('یک پست واقعی منتشر می‌شود. ادامه؟')">
         <select name="site_id" style="width:auto">{% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select><button class="sec">تست</button></form>
       {% if a.status == 'paused' %}<form class="inline" method="post" action="/accounts/{{ a.id }}/resume"><button class="sec">ادامه</button></form>{% endif %}
-      {% if r.web %}<a class="btn" href="/accounts/{{ a.id }}/login?restart=1" title="{{ 'وارد شده‌ای؛ برای ورود دوباره بزن' if r.session else 'هنوز وارد نشده‌ای' }}">ورود با مرورگر{{ ' ✓' if r.session else '' }}</a>
-        <a class="btn sec" href="/accounts/{{ a.id }}/cookies" title="برای گوگل، Medium و سایت‌هایی که ورود روی سرور را قبول نمی‌کنند">ورود با کوکی</a>{% endif %}
+      {% if r.web %}{% if a.kind != 'blogger_web' %}<a class="btn" href="/accounts/{{ a.id }}/login?restart=1" title="{{ 'وارد شده‌ای؛ برای ورود دوباره بزن' if r.session else 'هنوز وارد نشده‌ای' }}">ورود با مرورگر{{ ' ✓' if r.session else '' }}</a>{% endif %}
+        <a class="btn sec" href="/accounts/{{ a.id }}/cookies" title="برای گوگل، Medium و سایت‌هایی که ورود روی سرور را قبول نمی‌کنند">ورود با کوکی{{ ' ✓' if r.session and a.kind == 'blogger_web' else '' }}</a>{% endif %}
       <a class="btn" href="/accounts?edit={{ a.id }}#form">ویرایش</a>
       <form class="inline" method="post" action="/accounts/{{ a.id }}/toggle"><button class="sec">{{ 'خاموش' if a.enabled else 'روشن' }}</button></form>
       <form class="inline" method="post" action="/accounts/{{ a.id }}/delete" onsubmit="return confirm('حذف شود؟')"><button class="danger">حذف</button></form>
