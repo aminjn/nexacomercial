@@ -303,3 +303,18 @@ def test_settings_page_saves_and_applies(monkeypatch):
             == {"models": ["qwen2.5:14b"]}
         client.post("/settings", data={"llm_provider": "fake", "clear_llm_api_key": "1", "clear_publish_proxy": "1"})
         assert settings.llm_api_key == "" and settings.publish_proxy == ""
+
+
+def test_account_form_hides_token_kinds_with_web_version():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with TestClient(app) as client:
+        page = client.get("/accounts").text
+        assert 'value="instagram_web"' in page and 'value="instagram"' not in page
+        assert 'value="telegram"' in page and 'value="blogger"' in page
+        a = m.Account(label="old", kind="instagram", category="social")
+        with m.session() as s:
+            s.add(a)
+            s.commit()
+        assert 'value="instagram"' in client.get("/accounts").text  # still editable when in use

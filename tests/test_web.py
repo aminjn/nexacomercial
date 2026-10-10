@@ -183,3 +183,34 @@ def test_instagram_recipe_persian_ui_and_error_shot(tmp_path):
     with TestClient(app) as client:
         assert "عکس صفحه در لحظه‌ی آخرین خطا" in client.get("/accounts").text
         assert client.get(f"/accounts/{a.id}/error-shot").content[:2] == b"\xff\xd8"
+
+
+def test_square_image_pads_wide_logo(tmp_path):
+    from app.publishers.web import WebPublisher
+
+    def jpeg_size(b: bytes) -> tuple[int, int]:
+        i = 2
+        while i < len(b):
+            marker, length = b[i + 1], int.from_bytes(b[i + 2:i + 4], "big")
+            if 0xC0 <= marker <= 0xC2:
+                return int.from_bytes(b[i + 7:i + 9], "big"), int.from_bytes(b[i + 5:i + 7], "big")
+            i += 2 + length
+        raise ValueError("no SOF")
+
+    def job():
+        ctx = browser.new_context()
+        try:
+            page = ctx.new_page()
+            png = page.evaluate("""() => { const c = document.createElement('canvas'); c.width = 1200; c.height = 350;
+                return c.toDataURL('image/png').split(',')[1]; }""")  # fully transparent wide image
+            src = tmp_path / "logo.png"
+            import base64
+            src.write_bytes(base64.b64decode(png))
+            out = WebPublisher.square_image(page, str(src))
+            return open(out, "rb").read()
+        finally:
+            ctx.close()
+    data = browser.call(job)
+    assert data[:2] == b"\xff\xd8"
+    w, h = jpeg_size(data)
+    assert w == h and w > 1200

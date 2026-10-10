@@ -6,6 +6,7 @@ recipe breaks, the error says which step failed and a screenshot is kept in data
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 import tempfile
@@ -88,6 +89,30 @@ class WebPublisher(Publisher):
             dt.setData('text/plain', html.replace(/<[^>]+>/g, ''));
             document.activeElement.dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true}));
         }""", html)
+
+    @staticmethod
+    def square_image(page: Any, path: str, background: str = "#ffffff") -> str:
+        """Centre the image on a square canvas (white behind transparent parts), so sites that crop
+        to a square (Instagram) show all of it. Done in a blank tab of the same browser."""
+        data = base64.b64encode(Path(path).read_bytes()).decode()
+        tab = page.context.new_page()
+        try:
+            out = tab.evaluate("""async ([src, bg]) => {
+                const img = new Image(); img.src = src; await img.decode();
+                const side = Math.max(img.width, img.height), pad = Math.round(side * 0.06), size = side + 2 * pad;
+                const c = document.createElement('canvas'); c.width = c.height = size;
+                const g = c.getContext('2d'); g.fillStyle = bg; g.fillRect(0, 0, size, size);
+                g.drawImage(img, (size - img.width) / 2, (size - img.height) / 2);
+                return c.toDataURL('image/jpeg', 0.92).split(',')[1];
+            }""", [f"data:image/*;base64,{data}", background])
+        except Exception:  # noqa: BLE001 — unreadable image: upload it as it is
+            return path
+        finally:
+            tab.close()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        tmp.write(base64.b64decode(out))
+        tmp.close()
+        return tmp.name
 
     @staticmethod
     def image_file(url: str) -> str:
@@ -238,7 +263,8 @@ class InstagramWeb(WebPublisher):
             except Exception:  # noqa: BLE001 — menu not found: open the create dialog by its address
                 self.goto(page, "https://www.instagram.com/create/select/")
             self._dismiss(page)
-            self.first(page, 'input[type="file"]', state="attached").set_input_files(self.image_file(image))
+            self.first(page, 'input[type="file"]', state="attached").set_input_files(
+                self.square_image(page, self.image_file(image)))
             for _ in range(2):  # crop → filters → caption
                 self.button(page, re.compile(r"^(Next|بعدی)$"), timeout=60_000).click()
                 page.wait_for_timeout(1500)

@@ -145,6 +145,8 @@ def settings_page(request: Request):
 
 
 V2RAY_PAGE = "/settings?at=v2ray#v2ray"
+# replaced by their *_web version (no developer app / token needed). The Telegram bot stays: it is easy and reliable.
+HIDDEN_KINDS = {k for k in REGISTRY if f"{k}_web" in REGISTRY and k != "telegram"}
 
 
 @app.post("/settings", dependencies=protected)
@@ -351,9 +353,12 @@ def accounts_page(request: Request, tag: str = "", kind: str = "", edit: int = 0
     rows = [{"a": a, "creds": masked(a.creds), "web": a.kind.endswith("_web"), "session": browser.has_session(a.id),
              "shot": a.kind.endswith("_web") and browser.error_shot(a.id).exists()}
             for a in accounts]
-    kinds = {k: {"category": REGISTRY[k].category, "fields": KIND_FIELDS.get(k, []), "guide": KIND_GUIDES.get(k, {})}
-             for k in sorted(REGISTRY)}
     current = _get(m.Account, edit) if edit else None
+    # token-based kinds that have a "log in as a user" (_web) replacement are hidden from the form;
+    # accounts already using them keep working and stay selectable
+    used = {a.kind for a in accounts} | ({current.kind} if current else set())
+    kinds = {k: {"category": REGISTRY[k].category, "fields": KIND_FIELDS.get(k, []), "guide": KIND_GUIDES.get(k, {})}
+             for k in sorted(REGISTRY) if k in used or k not in HIDDEN_KINDS}
     # Prefill non-secret values only; secret fields stay empty (= keep the stored value).
     current_creds = {k: v for k, v in current.creds.items() if not is_secret(k)} if current else {}
     return render(request, "accounts.html", rows=rows, kinds=kinds, tags=tags, sites=sites, f_tag=tag, f_kind=kind,
