@@ -108,10 +108,10 @@
 <div class="grid">
   <label class="check" style="display:flex"><input type="checkbox" name="utm_enabled" value="1" {{ 'checked' if settings.utm_enabled }}> برچسب UTM روی همه‌ی لینک‌ها</label>
   <label class="check" style="display:flex"><input type="checkbox" name="utm_on_articles" value="1" {{ 'checked' if settings.utm_on_articles }}> UTM روی بک‌لینک مقاله‌ها هم</label>
-  <label class="check" style="display:flex"><input type="checkbox" name="click_redirect" value="1" {{ 'checked' if settings.click_redirect }}> لینک کوتاه شمارنده برای پست‌های شبکه‌های اجتماعی</label>
+  <label class="check" style="display:flex"><input type="checkbox" name="click_redirect" value="1" {{ 'checked' if settings.click_redirect }}> لینک کوتاه شمارنده برای پست‌های شبکه‌های اجتماعی (در پست آدرس داشبورد دیده می‌شود، نه آدرس سایت)</label>
 </div>
 <small class="help">UTM: <code>utm_source</code> = پلتفرم، <code>utm_medium</code> = social / article، <code>utm_campaign</code> = اسم کمپین، <code>utm_content</code> = کد همان پست. با این کار گوگل آنالیتیکس هر کمپین را جدا گزارش می‌کند.
-لینک کوتاه (<code class="ltr">{{ settings.public_url or 'آدرس عمومی داشبورد' }}/r/...</code>) هر کلیک را در «گزارش‌ها» می‌شمارد و بازدیدکننده را به سایت می‌فرستد؛ فقط برای پست‌ها، نه مقاله‌ها، تا ارزش سئوی بک‌لینک حفظ شود. {% if not settings.public_url %}<b>برای لینک کوتاه «آدرس عمومی این داشبورد» را بالا پر کن.</b>{% endif %}</small>
+لینک کوتاه (<code class="ltr">{{ settings.public_url or 'آدرس عمومی داشبورد' }}/r/...</code>) هر کلیک را در «گزارش‌ها» می‌شمارد و بازدیدکننده را به سایت می‌فرستد؛ فقط برای پست‌ها، نه مقاله‌ها، تا ارزش سئوی بک‌لینک حفظ شود. اگر می‌خواهی در پست‌ها خودِ آدرس سایت دیده شود، این تیک را بردار؛ آن‌وقت کلیک‌ها با UTM در گوگل آنالیتیکسِ سایت شمرده می‌شوند. {% if not settings.public_url %}<b>برای لینک کوتاه «آدرس عمومی این داشبورد» را بالا پر کن.</b>{% endif %}</small>
 <div class="msg" style="margin-top:10px">لازم نیست برای هیچ لینکی کاری بکنی: هر لینک در هر پلتفرم خودکار برچسب و کد جدا می‌گیرد و جدا شمرده می‌شود.
 گوگل آنالیتیکس هم برای هر سایت جداست؛ Measurement ID و Property ID هر سایت را در صفحه‌ی <a href="/sites">سایت‌ها</a> ← ویرایش همان سایت وارد کن.
 این‌جا فقط یک بار سرویس‌اکانت گوگل را بگذار تا هدف در آنالیتیکس همه‌ی سایت‌ها خودکار ساخته شود و گزارششان بیاید.</div>
