@@ -29,6 +29,7 @@ class WebPublisher(Publisher):
     """Base: subclasses set `login_url` and implement `post(page, ...)` / `article(page, ...)`."""
 
     login_url = ""
+    direct = False  # True: connect without v2ray (Iranian sites refuse foreign addresses)
     # substrings of the address bar that mean "you are on the login page" (= session expired)
     login_markers: tuple[str, ...] = ("/login", "/signin", "/accounts/login", "/i/flow/login")
 
@@ -41,7 +42,7 @@ class WebPublisher(Publisher):
 
     def run(self, recipe: Callable[[Any], PublishResult]) -> PublishResult:
         try:
-            return browser.run_with_session(self.account_id, recipe)
+            return browser.run_with_session(self.account_id, recipe, direct=self.direct)
         except browser.BrowserError as e:
             raise PublishError(str(e)) from e
         except PublishError:
@@ -602,3 +603,132 @@ class DevToWeb(WebPublisher):
             return PublishResult(url=page.url)
 
         return self.run(recipe)
+
+
+# ---------------------------------------------------------------- Iranian blogs (Virgool, Blogfa, Blog.ir, ...)
+
+
+class IranBlogWeb(WebPublisher):
+    """One recipe for Persian blog services: open the "new post" page, fill the title, put the article in
+    whatever editor the page has (rich editor in an iframe, a contenteditable box or a plain textarea) and press
+    the publish button. Connects directly, without v2ray. If the new-post page moves, the account's
+    «new_post_url» field takes the address you see in your own browser."""
+
+    category = "article"
+    direct = True
+    new_post_url = ""  # may contain {blog}
+    login_markers = ("/login", "/signin", "Login.aspx", "/auth")
+    publish_words = re.compile(r"انتشار|منتشر|ارسال|ثبت|ذخیره|Publish", re.I)
+    TITLE = ('input[name*="title" i]', 'input[id*="title" i]', 'input[placeholder*="عنوان"]',
+             'textarea[placeholder*="عنوان"]', 'textarea[name*="title" i]',
+             '[contenteditable="true"][data-placeholder*="عنوان"]', 'h1[contenteditable="true"]')
+
+    def blog(self) -> str:
+        b = (self.opt("blog") or "").strip().rstrip("/")
+        return re.sub(r"^https?://", "", b).split(".")[0] if b else ""
+
+    def target(self) -> str:
+        own = (self.opt("new_post_url") or "").strip()
+        if own:
+            return own if "://" in own else "https://" + own
+        if "{blog}" in self.new_post_url and not self.blog():
+            raise PublishError("اسم وبلاگت را در «ویرایش» همین اکانت بنویس")
+        return self.new_post_url.format(blog=self.blog())
+
+    @staticmethod
+    def _fill_title(page: Any, loc: Any, title: str) -> None:
+        if loc.evaluate("e => ['INPUT', 'TEXTAREA'].includes(e.tagName)"):
+            loc.fill(title)
+        else:
+            loc.click()
+            page.keyboard.insert_text(title)
+
+    @staticmethod
+    def _fill_body(page: Any, html: str, title_handle: Any) -> None:
+        put = """(html) => {
+            const b = document.body; b.focus();
+            if (!document.execCommand('insertHTML', false, html)) b.innerHTML = html;
+            return true;
+        }"""
+        for frame in page.frames[1:]:  # TinyMCE / CKEditor: the article goes in an editable iframe
+            try:
+                if frame.evaluate("() => document.body && (document.body.isContentEditable || document.designMode === 'on')"):
+                    frame.evaluate(put, html)
+                    return
+            except Exception:  # noqa: BLE001 — cross-origin or gone: next one
+                continue
+        boxes = page.locator('[contenteditable="true"]')
+        for i in range(boxes.count()):
+            box = boxes.nth(i)
+            if box.is_visible() and not box.evaluate("(e, t) => e === t", title_handle):
+                box.click()
+                page.evaluate("""(html) => {
+                    if (!document.execCommand('insertHTML', false, html)) {
+                        const dt = new DataTransfer(); dt.setData('text/html', html);
+                        document.activeElement.dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true}));
+                    }}""", html)
+                return
+        areas = page.locator("textarea:visible")
+        for i in range(areas.count()):
+            a = areas.nth(i)
+            if not a.evaluate("(e, t) => e === t", title_handle):
+                a.fill(html)
+                return
+        raise PublishError("کادر متن پست پیدا نشد — شاید ظاهر سایت عوض شده؛ «عکس صفحه در لحظه‌ی آخرین خطا» را ببین")
+
+    def _press_publish(self, page: Any) -> None:
+        for role in ("button", "link"):
+            loc = page.get_by_role(role, name=self.publish_words)
+            for i in range(loc.count()):
+                if loc.nth(i).is_visible():
+                    loc.nth(i).click()
+                    return
+        raise PublishError("دکمه‌ی انتشار پیدا نشد — شاید ظاهر سایت عوض شده")
+
+    def publish_article(self, article: Article) -> PublishResult:
+        def recipe(page: Any) -> PublishResult:
+            self.goto(page, self.target())
+            start = page.url
+            title = self.first(page, *self.TITLE)
+            self._fill_title(page, title, article.title)
+            self._fill_body(page, article.body_html, title.element_handle())
+            page.wait_for_timeout(1500)
+            self._press_publish(page)
+            try:
+                page.wait_for_function("(u) => location.href !== u", arg=start, timeout=30_000)
+            except Exception:  # noqa: BLE001 — some panels stay on the same page and show a message
+                pass
+            page.wait_for_timeout(3000)
+            for confirm in ("تأیید", "تایید", "بله", "انتشار"):  # "publish now?" dialogs
+                d = page.locator('[role="dialog"]').get_by_role("button", name=confirm)
+                if d.count() and d.first.is_visible():
+                    d.first.click()
+                    page.wait_for_timeout(3000)
+                    break
+            url = page.url.split("?")[0]
+            if re.search(r"new|edit|write|editor|post\.aspx|/posts|panel|dashboard|desktop", url, re.I):
+                b = (self.opt("blog") or "").strip()
+                url = (b if "://" in b else f"https://{b}") if b and "." in b else self.home_url()
+            return PublishResult(url=url)
+
+        return self.run(recipe)
+
+    def home_url(self) -> str:
+        return ""
+
+
+def _iran(kind: str, login: str, new_post: str, home: str = "") -> None:
+    cls = type(kind.title().replace("_", ""), (IranBlogWeb,),
+               {"kind": kind, "login_url": login, "new_post_url": new_post,
+                "home_url": lambda self, h=home: h.format(blog=self.blog()) if h else ""})
+    register(cls)
+
+
+_iran("virgool_web", "https://virgool.io/login", "https://virgool.io/editor", "https://virgool.io/@{blog}")
+_iran("blogfa_web", "https://blogfa.com/Login.aspx", "https://blogfa.com/Desktop/Post.aspx", "https://{blog}.blogfa.com")
+_iran("blogir_web", "https://blog.ir/login", "https://blog.ir/panel/{blog}/post/new", "https://{blog}.blog.ir")
+_iran("mihanblog_web", "https://mihanblog.com/login", "https://mihanblog.com/panel/{blog}/post/new",
+      "https://{blog}.mihanblog.com")
+_iran("rozblog_web", "https://rozblog.com/login", "https://rozblog.com/panel/post/new", "https://{blog}.rozblog.com")
+_iran("blogsky_web", "https://www.blogsky.com/login", "https://www.blogsky.com/panel/post/new",
+      "https://{blog}.blogsky.com")

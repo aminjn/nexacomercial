@@ -32,8 +32,8 @@ def fake_sites(monkeypatch):
     shutil.rmtree(browser.settings.data_path / "sessions", ignore_errors=True)
     orig = browser.new_context
 
-    def ctx_with_routes(state=None):
-        ctx = orig(state)
+    def ctx_with_routes(state=None, direct=False):
+        ctx = orig(state, direct=direct)
 
         def handle(route):
             req = route.request
@@ -367,3 +367,36 @@ def test_devto_editor_request():
     import json
     sent = json.loads(POSTED[0]["body"])["article"]
     assert sent["title"] == "خرید ملک" and sent["published"] and sent["tag_list"] == "realestate,homebuying"
+
+
+def test_iranian_blog_rich_editor_in_iframe():
+    a = account("blogfa_web", blog="melkjet")
+    logged_in(a, ".blogfa.com")
+    PAGES["https://blogfa.com/Desktop/Post.aspx"] = """<input name="txtTitle" id="t">
+      <iframe id="ed" srcdoc="<body contenteditable=true></body>"></iframe>
+      <button onclick="fetch('/save',{method:'POST',body:document.getElementById('t').value+'|'+
+        document.getElementById('ed').contentDocument.body.innerHTML}).then(()=>location.href='/Desktop/Posts.aspx')">ارسال پست</button>"""
+    PAGES["https://blogfa.com/save"] = "ok"
+    PAGES["https://blogfa.com/Desktop/Posts.aspx"] = "<p>ok</p>"
+    art = Article(title="عنوان", body_markdown="متن [ملک](https://example.com/p)", excerpt="", tags=[],
+                  link_url="https://example.com/p", anchor="ملک", site_id=1)
+    pub = make("blogfa_web", {**a.creds, "_account_id": a.id})
+    assert pub.direct
+    res = pub.publish_article(art)
+    assert res.url == "https://melkjet.blogfa.com"
+    assert POSTED[0]["body"].startswith("عنوان|") and 'href="https://example.com/p"' in POSTED[0]["body"]
+
+
+def test_iranian_blog_contenteditable_and_own_new_post_url():
+    a = account("virgool_web", blog="melkjet", new_post_url="virgool.io/write")
+    logged_in(a, ".virgool.io")
+    PAGES["https://virgool.io/write"] = """<h1 contenteditable="true" id="t"></h1><div contenteditable="true" id="b"></div>
+      <button onclick="fetch('/save',{method:'POST',body:document.getElementById('t').innerText+'|'+
+        document.getElementById('b').innerHTML}).then(()=>location.href='/@melkjet/my-post-x')">انتشار</button>"""
+    PAGES["https://virgool.io/save"] = "ok"
+    PAGES["https://virgool.io/@melkjet/"] = "<p>post</p>"
+    art = Article(title="عنوان", body_markdown="متن [ملک](https://example.com/p)", excerpt="", tags=[],
+                  link_url="https://example.com/p", anchor="ملک", site_id=1)
+    res = make("virgool_web", {**a.creds, "_account_id": a.id}).publish_article(art)
+    assert res.url == "https://virgool.io/@melkjet/my-post-x"
+    assert POSTED[0]["body"].startswith("عنوان|") and "example.com/p" in POSTED[0]["body"]

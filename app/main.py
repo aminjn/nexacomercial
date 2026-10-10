@@ -162,7 +162,8 @@ def _sa_email() -> str:
 
 V2RAY_PAGE = "/settings?at=v2ray#v2ray"
 # replaced by their *_web version (no developer app / token needed). The Telegram bot stays: it is easy and reliable.
-HIDDEN_KINDS = {k for k in REGISTRY if f"{k}_web" in REGISTRY and k != "telegram"} | {"blogger"}  # → blogger_email
+HIDDEN_KINDS = ({k for k in REGISTRY if f"{k}_web" in REGISTRY and k != "telegram"}
+                | {"blogger", "devto", "devto_web"})  # dev.to: not wanted  # → blogger_email
 
 
 @app.post("/settings", dependencies=protected)
@@ -636,6 +637,8 @@ PLATFORM_NAMES = {
     "threads": "Threads", "pinterest": "پینترست", "reddit": "ردیت", "mastodon": "ماستودون", "bluesky": "Bluesky",
     "telegraph": "Telegraph", "blogger": "Blogger", "wordpress": "وردپرس", "medium": "Medium", "tumblr": "Tumblr",
     "devto": "dev.to", "hashnode": "Hashnode", "ghost": "Ghost", "writeas": "Write.as", "webhook": "Webhook",
+    "virgool": "ویرگول", "blogfa": "بلاگفا", "blogir": "بلاگ.آی‌آر", "mihanblog": "میهن‌بلاگ", "rozblog": "رزبلاگ",
+    "blogsky": "بلاگ‌اسکای",
 }
 
 
@@ -837,7 +840,8 @@ def account_login_page(request: Request, account_id: int, restart: int = 0):
     acc = _web_account(account_id)
     if restart or not browser.login_active(acc.id):
         try:
-            browser.login_start(acc.id, make(acc.kind, {**acc.creds, "_account_id": acc.id}).login_url)
+            pub = make(acc.kind, {**acc.creds, "_account_id": acc.id})
+            browser.login_start(acc.id, pub.login_url, direct=getattr(pub, "direct", False))
         except Exception as e:  # noqa: BLE001
             return back("/accounts", f"مرورگر باز نشد: {e}")
     return render(request, "browser_login.html", acc=acc, viewport=browser.VIEWPORT)

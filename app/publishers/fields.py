@@ -335,6 +335,15 @@ WEB_FIELDS: dict[str, list[F]] = {
     "medium_web": [_HANDLE],
     "tumblr_web": [_HANDLE, ("blog", False, "اسم وبلاگ", "اختیاری؛ اگر چند وبلاگ داری، اسم همانی که باید در آن پست شود.")],
     "devto_web": [_HANDLE],
+    **{k: [("blog", k != "virgool_web", "اسم وبلاگ" if k != "virgool_web" else "نام کاربری ویرگول",
+             f"همان کلمه‌ی اول آدرس وبلاگت، مثل melkjet برای {ex}" if k != "virgool_web"
+             else "اختیاری؛ همان که بعد از @ در آدرس پروفایلت است، مثل melkjet برای virgool.io/@melkjet"),
+            ("new_post_url", False, "آدرس صفحه‌ی «پست جدید»",
+             "معمولاً خالی بگذار. اگر «تست» گفت صفحه پیدا نشد: در کروم خودت وارد پنل شو، «نوشتن پست جدید» را بزن و "
+             "آدرس همان صفحه را این‌جا بگذار.")]
+       for k, ex in (("virgool_web", ""), ("blogfa_web", "melkjet.blogfa.com"), ("blogir_web", "melkjet.blog.ir"),
+                     ("mihanblog_web", "melkjet.mihanblog.com"), ("rozblog_web", "melkjet.rozblog.com"),
+                     ("blogsky_web", "melkjet.blogsky.com"))},
     "blogger_web": [("blog_url", True, "آدرس وبلاگ", "همان آدرسی که وبلاگت با آن باز می‌شود، مثل dordorgroup.blogspot.com"),
                     ("blog_id", False, "شناسه‌ی وبلاگ (Blog ID)",
                      "اگر چند وبلاگ داری: عدد بلندِ آدرس صفحه‌ی بلاگر وقتی آن وبلاگ باز است، مثل "
@@ -371,6 +380,10 @@ KIND_GUIDES["blogger_email"] = {
 for _k in WEB_FIELDS:
     KIND_GUIDES[_k] = {"summary": "ورود با نام کاربری و رمز خودت، بدون API و توکن.", "steps": WEB_LOGIN_STEPS,
                        "links": [], "notes": WEB_NOTE}
+for _k in ("virgool_web", "blogfa_web", "blogir_web", "mihanblog_web", "rozblog_web", "blogsky_web"):
+    KIND_GUIDES[_k] = {**KIND_GUIDES[_k], "summary": "وبلاگ ایرانی با ورود خودت؛ مستقیم وصل می‌شود (بدون v2ray).",
+                       "notes": "اگر سایت هنگام ورود کپچا یا کد پیامکی خواست، در همان پنجره‌ی زنده واردش کن؛ "
+                                "یا «ورود با کوکی» را بزن. " + WEB_NOTE}
 KIND_GUIDES["blogger_web"] = {
     "summary": "بلاگر با حساب گوگل خودت؛ بدون ایمیل فرستنده، بدون توکن.",
     "steps": [

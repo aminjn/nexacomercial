@@ -141,8 +141,7 @@ _jobs: queue.Queue = queue.Queue()
 _worker: threading.Thread | None = None
 _worker_lock = threading.Lock()
 _pw: Any = None
-_browser: Any = None
-_browser_proxy: str | None = None
+_browsers: dict[bool, tuple[Any, str]] = {}  # direct? → (browser, proxy it was launched with)
 
 
 def _loop() -> None:
@@ -183,19 +182,22 @@ def _proxy() -> dict[str, str] | None:
     return p
 
 
-def _get_browser() -> Any:
-    """Launch (or relaunch after a proxy change / crash) the shared browser. Browser thread only."""
-    global _pw, _browser, _browser_proxy
-    proxy = _proxy()
+def _get_browser(direct: bool = False) -> Any:
+    """Launch (or relaunch after a proxy change / crash) the shared browser. Browser thread only.
+    direct=True: a second browser without v2ray, for Iranian sites that refuse foreign addresses."""
+    global _pw
+    proxy = None if direct else _proxy()
     key = repr(proxy)
-    if _browser is not None and _browser.is_connected() and _browser_proxy == key:
-        return _browser
-    if _browser is not None:
+    current, current_key = _browsers.get(direct, (None, ""))
+    if current is not None and current.is_connected() and current_key == key:
+        return current
+    if current is not None:
         try:
-            _browser.close()
+            current.close()
         except Exception:  # noqa: BLE001
             pass
-        _logins.clear()
+        for aid in [a for a, s in _logins.items() if s.get("direct") == direct]:
+            _logins.pop(aid, None)
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as e:
@@ -204,7 +206,7 @@ def _get_browser() -> Any:
     if _pw is None:
         _pw = sync_playwright().start()
     try:
-        _browser = _pw.chromium.launch(
+        b = _pw.chromium.launch(
             executable_path=chromium_path(), headless=True, proxy=proxy,
             args=["--no-sandbox", "--disable-dev-shm-usage", "--lang=en-US"])
     except Exception as e:  # noqa: BLE001
@@ -212,12 +214,12 @@ def _get_browser() -> Any:
             raise BrowserError("مرورگر Chromium روی سرور نصب نیست. روی سرور بزن: "
                                "INSTALL_BROWSER=1 APT_MIRROR=https://mirror.arvancloud.ir docker compose up -d --build") from e
         raise BrowserError(f"مرورگر Chromium اجرا نشد: {str(e).splitlines()[0][:300]}") from e
-    _browser_proxy = key
-    return _browser
+    _browsers[direct] = (b, key)
+    return b
 
 
-def new_context(state: dict[str, Any] | None = None) -> Any:
-    ctx = _get_browser().new_context(storage_state=state, viewport=VIEWPORT, user_agent=UA, locale="en-US")
+def new_context(state: dict[str, Any] | None = None, direct: bool = False) -> Any:
+    ctx = _get_browser(direct).new_context(storage_state=state, viewport=VIEWPORT, user_agent=UA, locale="en-US")
     ctx.set_default_timeout(30_000)
     return ctx
 
@@ -259,11 +261,11 @@ def _login(account_id: int) -> dict[str, Any]:
     return s
 
 
-def _start(account_id: int, url: str) -> None:
+def _start(account_id: int, url: str, direct: bool = False) -> None:
     _close_login(account_id)
-    ctx = new_context(load_state(account_id))
+    ctx = new_context(load_state(account_id), direct=direct)
     page = ctx.new_page()
-    _logins[account_id] = {"ctx": ctx, "page": page, "last": time.time()}
+    _logins[account_id] = {"ctx": ctx, "page": page, "last": time.time(), "direct": direct}
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=60_000)
     except Exception as e:  # noqa: BLE001 — keep the window open; the user can retry from the address bar
@@ -308,8 +310,8 @@ def _finish(account_id: int) -> None:
     _close_login(account_id)
 
 
-def login_start(account_id: int, url: str) -> None:
-    call(_start, account_id, url, timeout=120)
+def login_start(account_id: int, url: str, direct: bool = False) -> None:
+    call(_start, account_id, url, direct, timeout=120)
 
 
 def login_shot(account_id: int) -> bytes:
@@ -336,14 +338,14 @@ def login_active(account_id: int) -> bool:
 
 
 def run_with_session(account_id: int, recipe: Callable[[Any], Any], timeout: float = 300,
-                     keep_shot: bool = True) -> Any:
+                     keep_shot: bool = True, direct: bool = False) -> Any:
     """Open a page with the account's saved cookies, run `recipe(page)`, save refreshed cookies."""
     state = load_state(account_id)
     if state is None:
         raise BrowserError("هنوز وارد این اکانت نشده‌ای: در صفحه‌ی اکانت‌ها «ورود با مرورگر» را بزن")
 
     def job() -> Any:
-        ctx = new_context(state)
+        ctx = new_context(state, direct=direct)
         try:
             page = ctx.new_page()
             result = recipe(page)
