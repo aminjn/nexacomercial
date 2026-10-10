@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     ga_property_id: str = ""  # numeric GA4 property id (for the automatic key event + reports)
     ga_service_account: str = ""  # service-account JSON with Editor access to the property
 
+    # Sender mailbox (Blogger "post by email"). Port 587 = STARTTLS, 465 = SSL.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_via_v2ray: bool = True
+
     # Chromium for "<platform>_web" accounts (log in as a user). Empty = `chromium` on PATH.
     chromium_path: str = ""
 

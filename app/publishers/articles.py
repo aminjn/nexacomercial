@@ -185,6 +185,43 @@ class Blogger(Publisher):
         return PublishResult(url=d.get("url", ""), external_id=str(d.get("id", "")), raw=d)
 
 
+@register
+class BloggerEmail(Publisher):
+    """Blogger's "post by email" (Settings → Email → Publish email address): no Google Cloud, no tokens.
+    After sending, the blog's public feed is read to find the new post's address."""
+
+    kind = "blogger_email"
+
+    def publish_article(self, article: Article) -> PublishResult:
+        from .. import mailer
+        to = self.opt("blog_email", required=True).strip()
+        if not to.endswith("@blogger.com"):
+            raise PublishError("آدرس ایمیل بلاگر باید به @blogger.com ختم شود (Settings ← Email ← Publish email address)")
+        try:
+            mailer.send(to, article.title, article.body_html)
+        except mailer.MailError as e:
+            raise PublishError(str(e)) from e
+        blog = self.opt("blog_url", required=True).strip().rstrip("/")
+        blog = blog if "://" in blog else "https://" + blog
+        url, post_id = self.find_post(blog, article.title)
+        return PublishResult(url=url or blog, external_id=post_id)
+
+    def find_post(self, blog: str, title: str, tries: int = 6, wait: float = 10) -> tuple[str, str]:
+        """Blogger publishes an emailed post within a minute or so; look for it in the public feed."""
+        for _ in range(tries):
+            time.sleep(wait)
+            try:
+                with self.http() as c:
+                    feed = c.get(f"{blog}/feeds/posts/default", params={"alt": "json", "max-results": 10}).json()
+            except Exception:  # noqa: BLE001 — feed not reachable yet: try again
+                continue
+            for e in feed.get("feed", {}).get("entry", []):
+                if e.get("title", {}).get("$t", "").strip() == title.strip():
+                    link = next((x["href"] for x in e.get("link", []) if x.get("rel") == "alternate"), "")
+                    return link, e.get("id", {}).get("$t", "").rsplit("post-", 1)[-1]
+        return "", ""
+
+
 # ---------------------------------------------------------------- Dev.to
 
 

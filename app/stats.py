@@ -178,7 +178,7 @@ FETCHERS: dict[str, Callable[[httpx.Client, m.Publication], Stats | None]] = {
 
 
 def base_kind(kind: str) -> str:
-    return kind.removesuffix("_web")
+    return kind.removesuffix("_web").removesuffix("_email")
 
 
 def has_stats(kind: str) -> bool:

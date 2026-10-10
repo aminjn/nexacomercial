@@ -86,6 +86,20 @@
 {% if v2.logs %}<details class="guide"><summary>لاگ Xray</summary><pre class="ltr" style="white-space:pre-wrap;font-size:12px">{{ v2.logs|join('\n') }}</pre></details>{% endif %}
 </div>
 
+<div class="card" id="smtp"><h2>ایمیل فرستنده (برای انتشار در بلاگر)</h2>
+{% if msg and request.query_params.get('at') == 'smtp' %}<div class="msg">{{ msg }}</div>{% endif %}
+<p class="muted" style="font-size:13px">بلاگر را می‌شود فقط با ایمیل پست کرد (اکانت نوع <code>blogger_email</code>). این‌جا یک بار ایمیلی را بگذار که پست‌ها از آن فرستاده شوند؛ هر ایمیلی که SMTP دارد کار می‌کند.</p>
+<div class="grid">
+  <label><span>سرور SMTP</span><input name="smtp_host" class="ltr" value="{{ settings.smtp_host }}" placeholder="smtp.gmail.com"></label>
+  <label><span>پورت</span><select name="smtp_port">{% for p, t in ((587, '587 (STARTTLS)'), (465, '465 (SSL)')) %}<option value="{{ p }}" {{ 'selected' if settings.smtp_port == p }}>{{ t }}</option>{% endfor %}</select></label>
+  <label><span>ایمیل (نام کاربری)</span><input name="smtp_user" class="ltr" value="{{ settings.smtp_user }}" placeholder="you@gmail.com"></label>
+  <label><span>رمز</span><input name="smtp_password" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_smtp_pw else '' }}">
+    <small class="help">برای Gmail رمز اصلی کار نمی‌کند: myaccount.google.com ← Security ← 2-Step Verification را روشن کن ← App passwords ← یک رمز ۱۶ حرفی بساز و این‌جا بگذار.</small>
+    {% if has_smtp_pw %}<span class="check"><input type="checkbox" name="clear_smtp_password" value="1"> حذف</span>{% endif %}</label>
+</div>
+<label class="check" style="display:flex"><input type="checkbox" name="smtp_via_v2ray" value="1" {{ 'checked' if settings.smtp_via_v2ray }}> از v2ray رد شود (برای Gmail و ایمیل‌های خارجی لازم است)</label>
+</div>
+
 <div class="card" id="ga"><h2>ردیابی کلیک و گوگل آنالیتیکس</h2>
 {% if msg and request.query_params.get('at') == 'ga' %}<div class="msg">{{ msg }}</div>{% endif %}
 <div class="grid">
@@ -115,6 +129,7 @@
 <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
 <form method="post" action="/llm-test?next=/settings"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
 <form method="post" action="/v2ray-test"><button class="sec">تست اتصال v2ray</button></form>
+<form method="post" action="/smtp-test"><button class="sec">ایمیل آزمایشی</button></form>
 <form method="post" action="/ga/key-event"><button class="sec">ساخت هدف در آنالیتیکس همه‌ی سایت‌ها</button></form>
 <form method="post" action="/v2ray-install"><button class="sec">{{ 'به‌روزرسانی Xray' if v2.binary else 'نصب Xray' }} (دانلود از گیت‌هاب)</button></form>
 </div>

@@ -146,7 +146,7 @@ def llm_test(next: str = "/"):
 def settings_page(request: Request):
     return render(request, "settings.html", has_llm_key=bool(settings.llm_api_key),
                   has_anthropic_key=bool(settings.anthropic_api_key), has_proxy=bool(settings.publish_proxy),
-                  v2=v2ray.status(), has_ga_secret=bool(settings.ga_api_secret),
+                  v2=v2ray.status(), has_ga_secret=bool(settings.ga_api_secret), has_smtp_pw=bool(settings.smtp_password),
                   has_ga_sa=bool(settings.ga_service_account), ga_sa_email=_sa_email())
 
 
@@ -159,7 +159,7 @@ def _sa_email() -> str:
 
 V2RAY_PAGE = "/settings?at=v2ray#v2ray"
 # replaced by their *_web version (no developer app / token needed). The Telegram bot stays: it is easy and reliable.
-HIDDEN_KINDS = {k for k in REGISTRY if f"{k}_web" in REGISTRY and k != "telegram"}
+HIDDEN_KINDS = {k for k in REGISTRY if f"{k}_web" in REGISTRY and k != "telegram"} | {"blogger"}  # → blogger_email
 
 
 @app.post("/settings", dependencies=protected)
@@ -178,12 +178,17 @@ async def settings_save(request: Request):
         "dry_run": bool(f.get("dry_run")),
         "v2ray_enabled": bool(f.get("v2ray_enabled")),
         "v2ray_for_llm": bool(f.get("v2ray_for_llm")),
+        "smtp_host": f.get("smtp_host", "").strip(),
+        "smtp_port": int(f.get("smtp_port") or 587),
+        "smtp_user": f.get("smtp_user", "").strip(),
+        "smtp_from": f.get("smtp_from", "").strip(),
+        "smtp_via_v2ray": bool(f.get("smtp_via_v2ray")),
         "utm_enabled": bool(f.get("utm_enabled")),
         "utm_on_articles": bool(f.get("utm_on_articles")),
         "click_redirect": bool(f.get("click_redirect")),
     }
     # secrets: empty field = keep; "clear" checkbox = remove
-    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy", "v2ray_link", "ga_service_account"):
+    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy", "v2ray_link", "ga_service_account", "smtp_password"):
         v = f.get(key, "").strip()
         if v or f.get(f"clear_{key}"):
             values[key] = v
@@ -495,6 +500,18 @@ def _ensure_goals() -> str:
         except Exception as e:  # noqa: BLE001
             out.append(f"{site.name}: {e}")
     return " | ".join(out)
+
+
+@app.post("/smtp-test", dependencies=protected)
+def smtp_test():
+    from . import mailer
+    try:
+        mailer.send(settings.smtp_user, "Nexa Backlink — ایمیل آزمایشی",
+                    "<p>اگر این را می‌بینی، ایمیل فرستنده درست تنظیم شده ✓</p>")
+        msg = f"ایمیل آزمایشی به {settings.smtp_user} فرستاده شد ✓ صندوقت را ببین"
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+    return back("/settings?at=smtp#smtp", msg)
 
 
 @app.post("/ga/key-event", dependencies=protected)

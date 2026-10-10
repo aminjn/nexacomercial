@@ -347,6 +347,22 @@ WEB_NOTE = ("این روش رسمی نیست: سایت‌ها ورود و پست
             "موقتاً قفل کنند. اول با یک اکانت غیرمهم امتحان کن، فاصله‌ی بین پست‌ها را زیاد بگذار و زبان اکانت را "
             "انگلیسی کن تا دکمه‌ها پیدا شوند. اگر ظاهر سایت عوض شود، ممکن است این روش تا آپدیت بعدی کار نکند.")
 KIND_FIELDS.update(WEB_FIELDS)
+KIND_FIELDS["blogger_email"] = [
+    ("blog_url", True, "آدرس وبلاگ", "همان آدرسی که وبلاگت با آن باز می‌شود، مثل melkjet.blogspot.com"),
+    ("blog_email", True, "ایمیل انتشار بلاگر", "Blogger ← Settings ← Email ← Publish email address ← یک کلمه بنویس و "
+                                                "«Publish emails immediately» را انتخاب کن ← آدرسی شبیه melkjet.xyz123@blogger.com ← همان را این‌جا بگذار."),
+]
+KIND_GUIDES["blogger_email"] = {
+    "summary": "ساده‌ترین راه بلاگر: فقط یک آدرس ایمیل؛ بدون Google Cloud و توکن.",
+    "steps": [
+        "در blogger.com وارد وبلاگت شو ← Settings ← پایین صفحه بخش Email ← «Publish email address».",
+        "یک کلمه‌ی دلخواه بنویس (مثلاً melkjet123) و «Publish emails immediately» را انتخاب کن.",
+        "آدرسی که ساخته می‌شود (مثل you.melkjet123@blogger.com) را در کادر «ایمیل انتشار بلاگر» بگذار، آدرس وبلاگ را هم بنویس و ذخیره کن.",
+        "یک بار برای کل برنامه: در «تنظیمات ← ایمیل فرستنده» یک ایمیل برای فرستادن پست‌ها بگذار و «ایمیل آزمایشی» را بزن.",
+    ],
+    "links": [("Blogger", "https://www.blogger.com/")],
+    "notes": "این آدرس مثل رمز است؛ هر کسی داشته باشد می‌تواند در وبلاگت پست بگذارد. جایی منتشرش نکن.",
+}
 for _k in WEB_FIELDS:
     KIND_GUIDES[_k] = {"summary": "ورود با نام کاربری و رمز خودت، بدون API و توکن.", "steps": WEB_LOGIN_STEPS,
                        "links": [], "notes": WEB_NOTE}

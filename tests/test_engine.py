@@ -312,7 +312,7 @@ def test_account_form_hides_token_kinds_with_web_version():
     with TestClient(app) as client:
         page = client.get("/accounts").text
         assert 'value="instagram_web"' in page and 'value="instagram"' not in page
-        assert 'value="telegram"' in page and 'value="blogger"' in page
+        assert 'value="telegram"' in page and 'value="blogger_email"' in page
         a = m.Account(label="old", kind="instagram", category="social")
         with m.session() as s:
             s.add(a)
