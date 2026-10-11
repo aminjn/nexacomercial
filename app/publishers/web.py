@@ -92,20 +92,29 @@ class WebPublisher(Publisher):
         }""", html)
 
     @staticmethod
-    def square_image(page: Any, path: str, background: str = "#ffffff") -> str:
-        """Centre the image on a square canvas (white behind transparent parts), so sites that crop
-        to a square (Instagram) show all of it. Done in a blank tab of the same browser."""
+    def fit_image(page: Any, path: str, min_ratio: float = 0.8, max_ratio: float = 1.91) -> str:
+        """Make the image fit Instagram without cropping. Its shape is kept when Instagram allows it
+        (from 4:5 portrait to 1.91:1 landscape); a taller or wider image gets side/top bands filled with a
+        blurred copy of itself (not white bars). Done in a blank tab of the same browser."""
         data = base64.b64encode(Path(path).read_bytes()).decode()
         tab = page.context.new_page()
         try:
-            out = tab.evaluate("""async ([src, bg]) => {
+            out = tab.evaluate("""async ([src, lo, hi]) => {
                 const img = new Image(); img.src = src; await img.decode();
-                const side = Math.max(img.width, img.height), pad = Math.round(side * 0.06), size = side + 2 * pad;
-                const c = document.createElement('canvas'); c.width = c.height = size;
-                const g = c.getContext('2d'); g.fillStyle = bg; g.fillRect(0, 0, size, size);
-                g.drawImage(img, (size - img.width) / 2, (size - img.height) / 2);
-                return c.toDataURL('image/jpeg', 0.92).split(',')[1];
-            }""", [f"data:image/*;base64,{data}", background])
+                const w = img.width, h = img.height, r = w / h;
+                let W = w, H = h;
+                if (r > hi) H = Math.round(w / hi); else if (r < lo) W = Math.round(h * lo);
+                const c = document.createElement('canvas'); c.width = W; c.height = H;
+                const g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+                if (W !== w || H !== h) {  // fill the bands with a blurred, slightly darker copy
+                    const s = Math.max(W / w, H / h) * 1.1;
+                    g.filter = 'blur(' + Math.round(Math.max(W, H) / 25) + 'px) brightness(0.85)';
+                    g.drawImage(img, (W - w * s) / 2, (H - h * s) / 2, w * s, h * s);
+                    g.filter = 'none';
+                }
+                g.drawImage(img, (W - w) / 2, (H - h) / 2);
+                return c.toDataURL('image/jpeg', 0.95).split(',')[1];
+            }""", [f"data:image/*;base64,{data}", min_ratio, max_ratio])
         except Exception:  # noqa: BLE001 — unreadable image: upload it as it is
             return path
         finally:
@@ -265,7 +274,8 @@ class InstagramWeb(WebPublisher):
                 self.goto(page, "https://www.instagram.com/create/select/")
             self._dismiss(page)
             self.first(page, 'input[type="file"]', state="attached").set_input_files(
-                self.square_image(page, self.image_file(image)))
+                self.fit_image(page, self.image_file(image)))
+            self._original_crop(page)
             for _ in range(2):  # crop → filters → caption
                 self.button(page, re.compile(r"^(Next|بعدی)$"), timeout=60_000).click()
                 page.wait_for_timeout(1500)
@@ -277,6 +287,20 @@ class InstagramWeb(WebPublisher):
             return PublishResult(url=self._latest_post(page) or "https://www.instagram.com/")
 
         return self.run(recipe)
+
+    @staticmethod
+    def _original_crop(page: Any) -> None:
+        """Instagram crops to a square by default; pick «Original» so the whole picture is posted."""
+        try:
+            btn = page.locator(", ".join(f'svg[aria-label="{x}"]' for x in IG_CROP)).first
+            btn.wait_for(state="visible", timeout=15_000)
+            btn.click()
+            page.wait_for_timeout(700)
+            orig = page.get_by_text(re.compile(r"^(Original|اصلی|اصل|اندازه‌ی اصلی)$")).first
+            orig.click(timeout=5_000)
+            page.wait_for_timeout(700)
+        except Exception:  # noqa: BLE001 — layout changed: the image already fits Instagram's frame
+            pass
 
     @staticmethod
     def _wait_shared(page: Any, timeout_sec: int = 180) -> None:
@@ -321,6 +345,7 @@ IG_SHARED = r"post has been shared|Post shared|reel has been shared|Reel shared|
 IG_FAILED = (r"couldn't be shared|could not be shared|Something went wrong|Try again later|"
              r"We restrict certain activity|مشکلی پیش آمد|منتشر نشد|بعداً دوباره امتحان")
 IG_POST = ("Post", "پست")
+IG_CROP = ("Select crop", "Crop", "انتخاب برش", "برش")
 
 
 # ---------------------------------------------------------------- Threads

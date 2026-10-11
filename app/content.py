@@ -43,15 +43,22 @@ class SocialPost:
     site_id: int = 0
 
     def render(self, max_len: int | None = None, with_hashtags: bool = True) -> str:
-        parts = [self.text.strip()]
+        parts = [plain(self.text)]
         if with_hashtags and self.hashtags:
             parts.append(" ".join("#" + h.replace(" ", "_").lstrip("#") for h in self.hashtags))
         parts.append(self.link_url)
         out = "\n\n".join(parts)
         if max_len and len(out) > max_len:
             room = max_len - len(self.link_url) - 3
-            out = self.text.strip()[: max(room, 0)].rstrip() + "…\n\n" + self.link_url
+            out = plain(self.text)[: max(room, 0)].rstrip() + "…\n\n" + self.link_url
         return out
+
+
+def plain(text: str) -> str:
+    """Social networks show Markdown literally: **bold** / __bold__ / ## heading → plain text."""
+    text = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), text.strip())
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.M)
+    return text.replace("**", "")
 
 
 # ---------------------------------------------------------------- choosing what to link
