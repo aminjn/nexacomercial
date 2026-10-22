@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import time
 from typing import Any
 
 from requests_oauthlib import OAuth1Session
@@ -136,6 +137,15 @@ class Instagram(Publisher):
         with self.http() as c:
             d = self.check(c.post(f"https://graph.facebook.com/{v}/{user}/media", data={
                 "image_url": image, "caption": post.render(self.max_chars), "access_token": tok}))
+            # Instagram downloads and processes the image first; publishing before it's FINISHED fails.
+            for _ in range(int(self.opt("ready_wait_sec", 60)) // 3):
+                st = self.check(c.get(f"https://graph.facebook.com/{v}/{d['id']}",
+                                      params={"fields": "status_code", "access_token": tok})).get("status_code")
+                if st in ("FINISHED", None):
+                    break
+                if st == "ERROR":
+                    raise PublishError("اینستاگرام تصویر را نپذیرفت (فرمت/اندازه یا لینک تصویر از بیرون باز نمی‌شود)")
+                time.sleep(3)
             d2 = self.check(c.post(f"https://graph.facebook.com/{v}/{user}/media_publish",
                                    data={"creation_id": d["id"], "access_token": tok}))
             mid = d2.get("id", "")

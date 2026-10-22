@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from sqlmodel import Session, select
 
+from . import images
 from . import models as m
 from .config import settings
 from .content import generate_article, generate_social
@@ -116,9 +117,24 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             post = generate_social(llm, site, account.kind, max_chars=min(pub.max_chars or 240, 240), extra=extra)
             rec.title, rec.link_url = post.text[:120], post.link_url
             rec.body_preview = post.render()[:600]
-            if pub.needs_image and not (post.image_url or creds.get("image_url")):
-                stage = "setup"
-                raise PublishError(f"{account.kind} بدون تصویر پست نمی‌گذارد؛ در صفحه‌ی «سایت‌ها» برای این سایت تصویر انتخاب کن")
+            if pub.needs_image:
+                if images.enabled():
+                    stage = "image"
+                    try:
+                        post.image_url, prompt = images.generate_for_post(
+                            llm, site.niche or site.name, site.description, post.text, public=not dry)
+                        rec.body_preview = (rec.body_preview + "\n\n[image prompt] " + prompt)[:900]
+                    except Exception:
+                        if not (post.image_url or creds.get("image_url")):
+                            raise
+                        log.warning("image generation failed, falling back to the site image", exc_info=True)
+                if not (post.image_url or creds.get("image_url")):
+                    stage = "setup"
+                    raise PublishError(f"{account.kind} بدون تصویر پست نمی‌گذارد؛ در «تنظیمات» تولید تصویر را روشن کن "
+                                       "یا در صفحه‌ی «سایت‌ها» برای این سایت تصویر انتخاب کن")
+                if post.image_url:
+                    post.image_url = images.jpeg_url(post.image_url)  # Instagram accepts JPEG only
+                rec.image_url = post.image_url
             stage = "publish"
             res = None if dry else pub.publish_social(post)
         if dry:
@@ -154,7 +170,7 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
     return rec
 
 
-STAGE_NAMES = {"setup": "تنظیمات", "ai": "هوش مصنوعی (نوشتن محتوا)", "publish": "انتشار در"}
+STAGE_NAMES = {"setup": "تنظیمات", "ai": "هوش مصنوعی (نوشتن محتوا)", "image": "تولید تصویر", "publish": "انتشار در"}
 
 
 def explain_error(stage: str, kind: str, e: Exception) -> str:
@@ -174,7 +190,9 @@ def explain_error(stage: str, kind: str, e: Exception) -> str:
         why = "اتصال برقرار نشد."
     else:
         why = ""
-    if stage == "ai":
+    if stage == "image":
+        todo = "در «تنظیمات» بخش تولید تصویر را چک کن و «تست تولید تصویر» را بزن."
+    elif stage == "ai":
         todo = "در صفحه‌ی «تنظیمات» آدرس سرور و مدل هوش مصنوعی را چک کن و «تست اتصال» را بزن."
     elif stage == "publish" and ("connect" in low or "timeout" in low or "timed out" in low or "name resolution" in low):
         todo = "اگر این پلتفرم در ایران فیلتر است، در صفحه‌ی «تنظیمات» پراکسی انتشار را بگذار."

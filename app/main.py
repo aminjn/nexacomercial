@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
@@ -135,6 +136,7 @@ def llm_test(next: str = "/"):
 @app.get("/settings", response_class=HTMLResponse, dependencies=protected)
 def settings_page(request: Request):
     return render(request, "settings.html", has_llm_key=bool(settings.llm_api_key),
+                  has_image_key=bool(settings.image_api_key), test_image=request.query_params.get("img", ""),
                   has_anthropic_key=bool(settings.anthropic_api_key), has_proxy=bool(settings.publish_proxy))
 
 
@@ -153,13 +155,50 @@ async def settings_save(request: Request):
         "public_url": f.get("public_url", "").strip().rstrip("/"),
         "dry_run": bool(f.get("dry_run")),
     }
+    if f.get("image_provider") in ("off", "a1111", "comfyui", "openai"):
+        workflow = f.get("image_comfy_workflow", "").strip()
+        if workflow:
+            try:
+                json.loads(workflow)
+            except json.JSONDecodeError as e:
+                return back("/settings", f"workflow کامفی‌یوآی JSON معتبر نیست: {e}")
+        values.update({
+            "image_provider": f["image_provider"],
+            "image_base_url": f.get("image_base_url", "").strip(),
+            "image_model": f.get("image_model", "").strip(),
+            "image_width": int(f.get("image_width") or 1024),
+            "image_height": int(f.get("image_height") or 1024),
+            "image_steps": int(f.get("image_steps") or 25),
+            "image_negative_prompt": f.get("image_negative_prompt", ""),
+            "image_style": f.get("image_style", ""),
+            "image_comfy_workflow": workflow,
+            "image_timeout_sec": float(f.get("image_timeout_sec") or 300),
+        })
     # secrets: empty field = keep; "clear" checkbox = remove
-    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy"):
+    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy", "image_api_key"):
         v = f.get(key, "").strip()
         if v or f.get(f"clear_{key}"):
             values[key] = v
     runtime.save(values)
     return back("/settings", "تنظیمات ذخیره شد")
+
+
+@app.post("/settings/image-test", dependencies=protected)
+def settings_image_test(prompt: str = ""):
+    """Render one image with the saved settings and show it on the settings page."""
+    from urllib.parse import quote
+
+    from . import images
+    try:
+        if not prompt:
+            from .llm import get_llm
+            prompt = images.write_prompt(get_llm(), "املاک", "مشاور املاک و خرید و فروش آپارتمان",
+                                         "سه نکته برای خرید اولین آپارتمان")
+        name = images.store_jpeg(images.generate_bytes(prompt), prefix="test")
+    except Exception as e:  # noqa: BLE001
+        return back("/settings", engine.explain_error("image", "", e))
+    return RedirectResponse(f"/settings?img=/media/{name}&msg={quote('تصویر ساخته شد ✓ توضیح تصویر: ' + prompt)}#images",
+                            status_code=303)
 
 
 @app.get("/settings/models", dependencies=protected)

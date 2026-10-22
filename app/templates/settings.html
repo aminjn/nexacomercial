@@ -49,6 +49,49 @@
 </details>
 </div>
 
+<div class="card" id="images"><h2>تولید تصویر برای پست‌ها (اینستاگرام / پینترست)</h2>
+<p class="muted">اگر سرور تولید تصویر داری، برای هر پست اینستاگرام/پینترست یک تصویر تازه ساخته می‌شود: هوش مصنوعی از روی متن پست یک توضیح تصویر می‌نویسد و سرور تصویرت آن را می‌سازد. اگر تولید تصویر خطا بدهد، تصویر ثابت سایت (اگر گذاشته باشی) استفاده می‌شود.</p>
+<div class="grid">
+  <label><span>نوع سرور تصویر</span>
+    <select name="image_provider" id="img_provider">
+      {% for k, v in [('off','خاموش — فقط از تصویر ثابت سایت استفاده شود'),('a1111','Stable Diffusion WebUI (AUTOMATIC1111 / Forge / SD.Next)'),('comfyui','ComfyUI'),('openai','سرویس سازگار با OpenAI Images API')] %}
+      <option value="{{ k }}" {{ 'selected' if settings.image_provider == k }}>{{ v }}</option>{% endfor %}
+    </select>
+    <small class="help" data-img="a1111">WebUI باید با گزینه‌ی <code>--api</code> اجرا شده باشد (و برای دسترسی از بیرون <code>--listen</code>).</small>
+    <small class="help" data-img="comfyui">ComfyUI را با <code>--listen 0.0.0.0</code> اجرا کن تا از بیرون در دسترس باشد.</small>
+    <small class="help" data-img="openai">هر سرویسی که <code>/v1/images/generations</code> دارد (LocalAI، سرویس‌های واسط و ...).</small></label>
+</div>
+<div class="grid" data-img="a1111 comfyui openai">
+  <label><span>آدرس سرور تصویر *</span><input name="image_base_url" class="ltr" value="{{ settings.image_base_url }}" placeholder="http://1.2.3.4:7860">
+    <small class="help" data-img="a1111">آی‌پی و پورت WebUI؛ پیش‌فرض پورت <code>7860</code>. مثل <code>http://1.2.3.4:7860</code></small>
+    <small class="help" data-img="comfyui">آی‌پی و پورت ComfyUI؛ پیش‌فرض پورت <code>8188</code>. مثل <code>http://1.2.3.4:8188</code></small>
+    <small class="help" data-img="openai">آدرس پایه که به <code>/v1</code> ختم می‌شود.</small></label>
+  <label><span>کلید / توکن</span><input name="image_api_key" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_image_key else 'اختیاری' }}">
+    <small class="help">فقط اگر جلوی سرور تصویرت رمز (Bearer token) گذاشته‌ای.</small>
+    {% if has_image_key %}<span class="check"><input type="checkbox" name="clear_image_api_key" value="1"> حذف کلید</span>{% endif %}</label>
+  <label data-img="a1111 openai"><span>مدل (اختیاری)</span><input name="image_model" class="ltr" value="{{ settings.image_model }}">
+    <small class="help" data-img="a1111">اسم checkpoint (مثل sd_xl_base_1.0.safetensors). خالی = همان مدلی که الان در WebUI انتخاب شده.</small>
+    <small class="help" data-img="openai">اسم مدل تصویر در آن سرویس.</small></label>
+  <label><span>عرض × ارتفاع (پیکسل)</span>
+    <span style="display:flex;gap:6px"><input name="image_width" type="number" min="256" step="64" value="{{ settings.image_width }}"><input name="image_height" type="number" min="256" step="64" value="{{ settings.image_height }}"></span>
+    <small class="help">برای اینستاگرام مربع ۱۰۲۴×۱۰۲۴ یا عمودی ۸۹۶×۱۱۵۲ مناسب است.</small></label>
+  <label data-img="a1111 comfyui"><span>تعداد گام (steps)</span><input name="image_steps" type="number" min="1" max="150" value="{{ settings.image_steps }}">
+    <small class="help">۲۰ تا ۳۰ معمول است؛ برای مدل‌های سریع (Turbo / Lightning) ۴ تا ۸.</small></label>
+  <label><span>حداکثر زمان انتظار (ثانیه)</span><input name="image_timeout_sec" type="number" min="30" value="{{ settings.image_timeout_sec|int }}"></label>
+</div>
+<div class="grid" data-img="a1111 comfyui openai">
+  <label><span>سبک ثابت تصویر</span><input name="image_style" class="ltr" value="{{ settings.image_style }}">
+    <small class="help">به آخر توضیح هر تصویر اضافه می‌شود تا همه‌ی پست‌ها یک سبک داشته باشند؛ مثل <code>professional photo, natural light</code>.</small></label>
+  <label data-img="a1111 comfyui"><span>چیزهایی که نباید در تصویر باشد (negative prompt)</span><input name="image_negative_prompt" class="ltr" value="{{ settings.image_negative_prompt }}"></label>
+</div>
+<label data-img="comfyui"><span>Workflow کامفی‌یوآی (API Format) *</span>
+  <textarea name="image_comfy_workflow" class="ltr" style="min-height:140px" placeholder='{"6": {"inputs": {"text": "{{ '{{' }}prompt{{ '}}' }}", ...}, ...}'>{{ settings.image_comfy_workflow }}</textarea>
+  <small class="help">در ComfyUI ورک‌فلوی خودت را باز کن ← از تنظیمات «Enable Dev mode Options» را روشن کن ← منو ← «Save (API Format)» ← محتوای فایل JSON را این‌جا بچسبان.
+  بعد در متن نود prompt مثبت به‌جای متن بنویس <code>{{ '{{' }}prompt{{ '}}' }}</code>. اختیاری: <code>{{ '{{' }}negative{{ '}}' }}</code>، <code>{{ '{{' }}seed{{ '}}' }}</code>، <code>{{ '{{' }}width{{ '}}' }}</code>، <code>{{ '{{' }}height{{ '}}' }}</code>، <code>{{ '{{' }}steps{{ '}}' }}</code>.</small></label>
+{% if test_image %}<p><img src="{{ test_image }}" alt="" style="max-width:320px;border-radius:8px"></p>{% endif %}
+<p class="muted" style="font-size:12px">اول «ذخیره‌ی تنظیمات» را بزن، بعد پایین صفحه «تست تولید تصویر».</p>
+</div>
+
 <div class="card"><h2>انتشار</h2>
 <div class="grid">
   <label class="check" style="display:flex"><input type="checkbox" name="dry_run" value="1" {{ 'checked' if settings.dry_run }}> حالت آزمایشی (DRY RUN)
@@ -64,7 +107,8 @@
 
 <button>ذخیره‌ی تنظیمات</button>
 </form>
-<form method="post" action="/llm-test?next=/settings" style="margin-top:10px"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
+<form class="inline" method="post" action="/llm-test?next=/settings" style="margin-top:10px"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
+<form class="inline" method="post" action="/settings/image-test" onsubmit="this.querySelector('button').textContent='در حال ساخت تصویر... (ممکن است چند دقیقه طول بکشد)'"><button class="sec">تست تولید تصویر</button></form>
 
 <style>
 .help{display:block;color:var(--muted);font-size:12px;margin-top:3px;line-height:1.7}
@@ -84,6 +128,11 @@ function show(){
   document.querySelectorAll('[data-for]').forEach(e => { e.style.display = e.dataset.for.split(' ').includes(prov.value) ? '' : 'none'; });
 }
 prov.addEventListener('change', show); window.addEventListener('pageshow', show); show();
+const imgProv = document.getElementById('img_provider');
+function showImg(){
+  document.querySelectorAll('[data-img]').forEach(e => { e.style.display = e.dataset.img.split(' ').includes(imgProv.value) ? '' : 'none'; });
+}
+imgProv.addEventListener('change', showImg); window.addEventListener('pageshow', showImg); showImg();
 
 document.getElementById('fetch_models').addEventListener('click', async () => {
   const msg = document.getElementById('models_msg'), list = document.getElementById('model_list');

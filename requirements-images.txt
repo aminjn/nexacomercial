@@ -1,0 +1,2 @@
+# Separate layer so adding it doesn't re-download everything in requirements.txt
+pillow>=10

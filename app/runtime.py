@@ -27,6 +27,17 @@ EDITABLE: dict[str, tuple[type, bool]] = {
     "publish_proxy": (str, True),
     "public_url": (str, False),
     "dry_run": (bool, False),
+    "image_provider": (str, False),
+    "image_base_url": (str, False),
+    "image_api_key": (str, True),
+    "image_model": (str, False),
+    "image_width": (int, False),
+    "image_height": (int, False),
+    "image_steps": (int, False),
+    "image_negative_prompt": (str, False),
+    "image_style": (str, False),
+    "image_comfy_workflow": (str, False),
+    "image_timeout_sec": (float, False),
 }
 
 

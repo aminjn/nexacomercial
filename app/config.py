@@ -35,6 +35,20 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5-5"
     llm_timeout_sec: float = 600.0
 
+    # AI images for Instagram / Pinterest posts on your own image server.
+    # image_provider: "off" | "a1111" (Stable Diffusion WebUI / Forge) | "comfyui" | "openai" (OpenAI-compatible)
+    image_provider: str = "off"
+    image_base_url: str = ""
+    image_api_key: str = ""
+    image_model: str = ""
+    image_width: int = 1024
+    image_height: int = 1024
+    image_steps: int = 25
+    image_negative_prompt: str = "text, letters, watermark, logo, blurry, low quality, deformed"
+    image_style: str = "professional photo, high detail, natural light"
+    image_comfy_workflow: str = ""
+    image_timeout_sec: float = 300.0
+
     # Scheduler: every `tick_seconds` due campaigns are processed (at most `max_jobs_per_tick`).
     scheduler_enabled: bool = True
     tick_seconds: int = 60

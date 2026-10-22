@@ -121,6 +121,7 @@ class Publication(SQLModel, table=True):
     link_found: Optional[bool] = None
     link_rel: str = ""  # "" (dofollow) | nofollow | ugc | sponsored ...
     body_preview: str = ""
+    image_url: str = ""  # AI-generated (or site) image used by the post
 
 
 class RunLog(SQLModel, table=True):
@@ -139,7 +140,28 @@ def engine():
         from . import runtime  # noqa: F401 — registers the settings table
         _engine = create_engine(settings.db_url, connect_args={"check_same_thread": False})
         SQLModel.metadata.create_all(_engine)
+        _add_missing_columns(_engine)
     return _engine
+
+
+def _add_missing_columns(eng) -> None:
+    """Tiny SQLite migration: add columns that newer versions introduced to existing tables."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(eng)
+    with eng.begin() as conn:
+        tables = set(insp.get_table_names())
+        for table in SQLModel.metadata.sorted_tables:
+            if table.name not in tables:
+                continue
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in existing:
+                    ddl = col.type.compile(dialect=eng.dialect)
+                    default = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+                    lit = "" if default is None else (f" DEFAULT {int(default)}" if isinstance(default, (bool, int))
+                                                      else f" DEFAULT '{default}'")
+                    conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {ddl}{lit}'))
 
 
 def reset_engine() -> None:

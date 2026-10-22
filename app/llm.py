@@ -121,6 +121,8 @@ class FakeLLM:
 
     def complete(self, system: str, user: str, *, json_mode: bool = False) -> str:
         h = hashlib.sha1(user.encode()).hexdigest()[:6]
+        if "IMAGE PROMPT" in user:
+            return json.dumps({"prompt": f"modern living room, warm light, test {h}"})
         if "SOCIAL" in user:
             return json.dumps({"text": f"پست آزمایشی {h} — به سایت ما سر بزنید", "hashtags": ["تست"]}, ensure_ascii=False)
         return json.dumps(
