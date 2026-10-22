@@ -48,6 +48,14 @@
     <label><span>فقط این پلتفرم‌ها</span><select name="kinds" multiple size="5">{% for k in kinds %}<option {{ 'selected' if c and k in c.kinds }}>{{ k }}</option>{% endfor %}</select></label>
     <label><span>یا اکانت‌های مشخص</span><select name="account_ids" multiple size="5">{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if c and a.id in c.account_ids }}>#{{ a.id }} {{ a.label }} ({{ a.kind }})</option>{% endfor %}</select></label>
   </div>
+  <h2>کدام هوش مصنوعی؟</h2>
+  <div class="grid">
+    <label><span>هوش مصنوعی متن</span><select name="text_ai_id"><option value="">پیش‌فرض (از «تنظیمات»)</option>
+      {% for a in ai_conns if a.kind == 'text' %}<option value="{{ a.id }}" {{ 'selected' if c and c.text_ai_id == a.id }}>{{ a.name }} — {{ a.model or a.provider }}{{ '' if a.enabled else ' (خاموش)' }}</option>{% endfor %}</select>
+      <small class="muted" style="font-size:12px">اگر این اتصال جواب ندهد، خودکار بقیه‌ی اتصال‌های فعال امتحان می‌شوند.</small></label>
+    <label><span>سرور تصویر (برای اینستاگرام/پینترست)</span><select name="image_ai_id"><option value="">پیش‌فرض (از «تنظیمات»)</option>
+      {% for a in ai_conns if a.kind == 'image' %}<option value="{{ a.id }}" {{ 'selected' if c and c.image_ai_id == a.id }}>{{ a.name }}{{ '' if a.enabled else ' (خاموش)' }}</option>{% endfor %}</select></label>
+  </div>
   <label><span>دستور اضافه برای هوش مصنوعی (اختیاری) — مثلاً «روی تخفیف پاییزه تمرکز کن»</span><textarea name="extra_instructions">{{ c.extra_instructions if c }}</textarea></label>
   <label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if not c or c.enabled }}> فعال</label>
   <button>ذخیره</button> {% if c %}<a href="/campaigns">انصراف</a>{% endif %}

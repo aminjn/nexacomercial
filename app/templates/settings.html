@@ -1,114 +1,134 @@
 {% extends "base.html" %}
 {% block body %}
+{% set c = current %}
+{% set kind = c.kind if c else new_kind %}
+
+<div class="card" id="ai"><h2>اتصال‌های هوش مصنوعی</h2>
+<p class="muted">هر تعداد سرور هوش مصنوعی که داری اضافه کن: <b>متن</b> (نوشتن پست و مقاله) و <b>تصویر</b> (ساخت عکس پست اینستاگرام/پینترست).
+از هر نوع یکی «پیش‌فرض» است؛ اگر جواب ندهد، خودکار بقیه‌ی اتصال‌های فعال به ترتیب امتحان می‌شوند. در هر کمپین هم می‌توانی اتصال مشخصی انتخاب کنی.</p>
+<table>
+  <tr><th>نام</th><th>نوع</th><th>سرویس</th><th>آدرس</th><th>مدل</th><th>آخرین تست</th><th></th></tr>
+  {% for a in conns %}
+  <tr id="ai-{{ a.id }}">
+    <td>{{ a.name }} {% if a.is_default %}<span class="ok" title="پیش‌فرض">★ پیش‌فرض</span>{% endif %}{% if not a.enabled %} <span class="muted">(خاموش)</span>{% endif %}</td>
+    <td>{{ 'متن' if a.kind == 'text' else 'تصویر' }}</td>
+    <td>{{ (text_providers if a.kind == 'text' else image_providers).get(a.provider, a.provider).split(' (')[0] }}</td>
+    <td class="ltr">{{ a.base_url or '—' }}</td>
+    <td class="ltr">{{ a.model or '—' }}</td>
+    <td>{% if a.last_test_ok is none %}<span class="muted">تست نشده</span>{% else %}<span class="{{ 'ok' if a.last_test_ok else 'error' }}" title="{{ a.last_test_msg }}">{{ 'وصل ✓' if a.last_test_ok else 'خطا' }}</span>
+      <div class="muted" style="font-size:11px">{{ a.last_test_at|local }}</div>{% if not a.last_test_ok %}<div class="muted" style="font-size:11px;max-width:260px">{{ a.last_test_msg[:160] }}</div>{% endif %}{% endif %}</td>
+    <td style="white-space:nowrap">
+      <form class="inline" method="post" action="/ai/{{ a.id }}/test" onsubmit="this.querySelector('button').textContent='در حال تست...'"><button>تست</button></form>
+      <a class="btn" href="/settings?edit={{ a.id }}#form">ویرایش</a>
+      {% if not a.is_default %}<form class="inline" method="post" action="/ai/{{ a.id }}/default"><button class="sec">پیش‌فرض کن</button></form>{% endif %}
+      <form class="inline" method="post" action="/ai/{{ a.id }}/toggle"><button class="sec">{{ 'خاموش' if a.enabled else 'روشن' }}</button></form>
+      <form class="inline" method="post" action="/ai/{{ a.id }}/delete" onsubmit="return confirm('اتصال «{{ a.name }}» حذف شود؟')"><button class="danger">حذف</button></form>
+    </td></tr>
+  {% else %}<tr><td colspan="7" class="muted">هنوز اتصالی نساخته‌ای. از فرم پایین اولین هوش مصنوعی را اضافه کن.</td></tr>{% endfor %}
+</table>
+{% if test_image %}<p>تصویر تست: <br><img src="{{ test_image }}" alt="" style="max-width:320px;border-radius:8px;margin-top:6px"></p>{% endif %}
+<p style="margin-top:12px">
+  <a class="btn" href="/settings?new=text#form">+ افزودن هوش مصنوعی متن</a>
+  <a class="btn" href="/settings?new=image#form">+ افزودن سرور تصویر</a>
+</p>
+</div>
+
+<div class="card" id="form"><h2>{{ ('ویرایش «' ~ c.name ~ '»') if c else ('افزودن هوش مصنوعی متن' if kind == 'text' else 'افزودن سرور تصویر') }}</h2>
+<form method="post" action="/ai" autocomplete="off">
+  {% if c %}<input type="hidden" name="id" value="{{ c.id }}">{% endif %}
+  <input type="hidden" name="kind" value="{{ kind }}">
+  <div class="grid">
+    <label><span>نام اتصال</span><input name="name" value="{{ c.name if c }}" placeholder="{{ 'مثلاً Ollama سرور اصلی' if kind == 'text' else 'مثلاً سرور GPU' }}">
+      <small class="help">فقط برای خودت، تا اتصال‌ها را از هم تشخیص بدهی.</small></label>
+    <label><span>نوع سرویس *</span>
+      <select name="provider" id="provider">
+        {% for k, v in (text_providers if kind == 'text' else image_providers).items() %}
+        <option value="{{ k }}" {{ 'selected' if c and c.provider == k }}>{{ v }}</option>{% endfor %}
+      </select>
+      <small class="help" data-p="ollama">Ollama روی سرور خودت. آدرس سرور و اسم مدل را بده.</small>
+      <small class="help" data-p="openai-text">هر سرویسی که API آن شبیه OpenAI است: vLLM، LM Studio، LocalAI، OpenRouter و ...</small>
+      <small class="help" data-p="anthropic">API رسمی Claude؛ به کلید Anthropic نیاز دارد.</small>
+      <small class="help" data-p="fake">برای امتحان بقیه‌ی سیستم بدون هوش مصنوعی؛ متن آزمایشی ثابت می‌سازد.</small>
+      <small class="help" data-p="a1111">WebUI باید با گزینه‌ی <code>--api</code> (و برای دسترسی از بیرون <code>--listen</code>) اجرا شده باشد.</small>
+      <small class="help" data-p="comfyui">ComfyUI را با <code>--listen 0.0.0.0</code> اجرا کن تا از بیرون در دسترس باشد.</small>
+      <small class="help" data-p="openai-image">هر سرویسی که <code>/v1/images/generations</code> دارد.</small></label>
+  </div>
+
+  <div class="grid">
+    <label data-p="ollama openai-text a1111 comfyui openai-image"><span>آدرس سرور *</span><input name="base_url" id="base_url" class="ltr" value="{{ c.base_url if c }}">
+      <small class="help" data-p="ollama">آی‌پی یا دامنه به‌همراه پورت؛ مثل <code>http://1.2.3.4:11434</code></small>
+      <small class="help" data-p="openai-text openai-image">آدرس پایه که به <code>/v1</code> ختم می‌شود؛ مثل <code>http://1.2.3.4:8000/v1</code></small>
+      <small class="help" data-p="a1111">پیش‌فرض پورت WebUI <code>7860</code> است؛ مثل <code>http://1.2.3.4:7860</code></small>
+      <small class="help" data-p="comfyui">پیش‌فرض پورت ComfyUI <code>8188</code> است؛ مثل <code>http://1.2.3.4:8188</code></small></label>
+    <label data-p="ollama openai-text anthropic a1111 comfyui openai-image"><span>کلید / توکن</span>
+      <input name="api_key" id="api_key" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if c and c.api_key_enc else '' }}">
+      <small class="help" data-p="ollama a1111 comfyui">اختیاری؛ فقط اگر جلوی سرور رمز (Bearer token) گذاشته‌ای.</small>
+      <small class="help" data-p="openai-text openai-image">کلیدی که سرویس داده (برای سرور بدون رمز خالی بگذار).</small>
+      <small class="help" data-p="anthropic">از console.anthropic.com ← API Keys.</small>
+      {% if c and c.api_key_enc %}<span class="check"><input type="checkbox" name="clear_api_key" value="1"> حذف کلید</span>{% endif %}</label>
+    <label data-p="ollama openai-text anthropic a1111 openai-image"><span>مدل</span>
+      <input name="model" id="model" class="ltr" list="model_list" value="{{ c.model if c }}"><datalist id="model_list"></datalist>
+      <small class="help" data-p="ollama openai-text">اسم مدل روی سرور. «دریافت لیست مدل‌ها» را بزن تا از خود سرور بخواند.</small>
+      <small class="help" data-p="anthropic">خالی = مدل پیش‌فرض Claude.</small>
+      <small class="help" data-p="a1111">اسم checkpoint؛ خالی = همان مدلی که الان در WebUI انتخاب شده.</small>
+      <small class="help" data-p="openai-image">اسم مدل تصویر در آن سرویس.</small>
+      <span data-p="ollama openai-text"><button type="button" class="sec" id="fetch_models" style="margin-top:6px">دریافت لیست مدل‌ها از سرور</button>
+      <small class="help" id="models_msg"></small></span></label>
+    <label data-p="ollama openai-text anthropic a1111 comfyui openai-image"><span>حداکثر زمان انتظار (ثانیه)</span>
+      <input name="timeout_sec" type="number" min="30" value="{{ (c.opt('timeout_sec') if c else None) or (600 if kind == 'text' else 300) }}">
+      <small class="help">{{ 'مدل روی CPU کند است؛ برای مقاله‌ی کامل ۶۰۰ ثانیه مناسب است.' if kind == 'text' else 'برای GPU معمولاً ۶۰ تا ۳۰۰ ثانیه کافی است.' }}</small></label>
+  </div>
+
+  {% if kind == 'image' %}
+  <div class="grid">
+    <label><span>عرض × ارتفاع (پیکسل)</span>
+      <span style="display:flex;gap:6px"><input name="width" type="number" min="256" step="64" value="{{ c.opt('width', 1024) if c else 1024 }}"><input name="height" type="number" min="256" step="64" value="{{ c.opt('height', 1024) if c else 1024 }}"></span>
+      <small class="help">اینستاگرام: مربع ۱۰۲۴×۱۰۲۴ یا عمودی ۸۹۶×۱۱۵۲.</small></label>
+    <label data-p="a1111 comfyui"><span>تعداد گام (steps)</span><input name="steps" type="number" min="1" max="150" value="{{ c.opt('steps', 25) if c else 25 }}">
+      <small class="help">۲۰ تا ۳۰ معمول است؛ برای مدل‌های سریع (Turbo / Lightning) ۴ تا ۸.</small></label>
+    <label><span>سبک ثابت تصویر</span><input name="style" class="ltr" value="{{ c.opt('style', '') if c else 'professional photo, high detail, natural light' }}">
+      <small class="help">به آخر توضیح هر تصویر اضافه می‌شود تا همه‌ی پست‌ها یک سبک داشته باشند.</small></label>
+    <label data-p="a1111 comfyui"><span>چیزهایی که نباید در تصویر باشد</span><input name="negative_prompt" class="ltr" value="{{ c.opt('negative_prompt', '') if c else 'text, letters, watermark, logo, blurry, low quality, deformed' }}"></label>
+  </div>
+  <label data-p="comfyui"><span>Workflow کامفی‌یوآی (API Format) *</span>
+    <textarea name="comfy_workflow" class="ltr" style="min-height:140px">{{ c.opt('comfy_workflow', '') if c }}</textarea>
+    <small class="help">در ComfyUI: تنظیمات ← «Enable Dev mode Options» را روشن کن ← منو ← «Save (API Format)» ← محتوای فایل JSON را این‌جا بچسبان.
+      بعد در متن نود prompt مثبت بنویس <code>{{ '{{' }}prompt{{ '}}' }}</code>. اختیاری: <code>{{ '{{' }}negative{{ '}}' }}</code>، <code>{{ '{{' }}seed{{ '}}' }}</code>، <code>{{ '{{' }}width{{ '}}' }}</code>، <code>{{ '{{' }}height{{ '}}' }}</code>، <code>{{ '{{' }}steps{{ '}}' }}</code>.</small></label>
+  {% endif %}
+
+  <details class="guide" data-p="ollama"><summary>سرور Ollama را چطور آماده کنم که از بیرون وصل شود؟</summary>
+    <ol>
+      <li>Ollama به‌طور پیش‌فرض فقط به خود همان سرور جواب می‌دهد. روی سرور Ollama بزن: <code class="ltr">sudo systemctl edit ollama</code></li>
+      <li>این دو خط را اضافه و ذخیره کن: <code class="ltr">[Service]</code> و <code class="ltr">Environment="OLLAMA_HOST=0.0.0.0:11434"</code></li>
+      <li><code class="ltr">sudo systemctl restart ollama</code></li>
+      <li>Ollama رمز ندارد؛ پورت را فقط برای آی‌پی سرور این داشبورد باز کن: <code class="ltr">sudo ufw allow from IP-این-سرور to any port 11434</code></li>
+      <li>مدل را اگر نداری دانلود کن: <code class="ltr">ollama pull qwen2.5:14b</code> — لیست مدل‌ها: <code class="ltr">ollama list</code></li>
+    </ol>
+  </details>
+
+  <p>
+    {% if c %}<label class="check"><input type="checkbox" name="enabled" value="1" {{ 'checked' if c.enabled }}> فعال</label>{% endif %}
+    <label class="check"><input type="checkbox" name="is_default" value="1" {{ 'checked' if (c and c.is_default) or (not c and not conns|selectattr('kind', 'equalto', kind)|list) }}> پیش‌فرض {{ 'متن' if kind == 'text' else 'تصویر' }} باشد</label>
+  </p>
+  <button>ذخیره‌ی اتصال</button> {% if c %}<a href="/settings">انصراف</a>{% endif %}
+  <span class="muted" style="font-size:12px">بعد از ذخیره، در جدول بالا «تست» را بزن.</span>
+</form>
+</div>
+
 <form method="post" action="/settings" autocomplete="off">
-<div class="card"><h2>هوش مصنوعی</h2>
-<p class="muted">مدلی که مقاله‌ها و پست‌ها را می‌نویسد. سرور هوش مصنوعی خودت را این‌جا وصل کن، ذخیره کن و بعد «تست اتصال» را بزن.</p>
-<div class="grid">
-  <label><span>نوع سرویس</span>
-    <select name="llm_provider" id="provider">
-      {% for k, v in [('ollama','Ollama (سرور خودت)'),('openai','سرویس سازگار با OpenAI (vLLM، LM Studio، OpenRouter، ...)'),('anthropic','Claude (API رسمی Anthropic)'),('fake','آزمایشی — متن ثابت، بدون هوش مصنوعی')] %}
-      <option value="{{ k }}" {{ 'selected' if settings.llm_provider == k }}>{{ v }}</option>{% endfor %}
-    </select>
-    <small class="help" id="provider_help"></small></label>
-</div>
-
-<div class="grid" data-for="ollama openai">
-  <label><span>آدرس سرور *</span><input name="llm_base_url" id="base_url" class="ltr" value="{{ settings.llm_base_url }}">
-    <small class="help" data-for="ollama">آی‌پی یا دامنه‌ی سرور Ollama به‌همراه پورت؛ مثل <code>http://1.2.3.4:11434</code></small>
-    <small class="help" data-for="openai">آدرس پایه‌ی API که به <code>/v1</code> ختم می‌شود؛ مثل <code>http://1.2.3.4:8000/v1</code> یا <code>https://openrouter.ai/api/v1</code></small></label>
-  <label><span>کلید API</span><input name="llm_api_key" id="api_key" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_llm_key else '' }}">
-    <small class="help" data-for="ollama">اختیاری. Ollama خودش رمز ندارد؛ فقط اگر جلوی آن nginx با توکن گذاشته‌ای، توکن را این‌جا بگذار.</small>
-    <small class="help" data-for="openai">کلیدی که سرویس به تو داده (برای vLLM / LM Studio بدون رمز، خالی بگذار).</small>
-    {% if has_llm_key %}<span class="check"><input type="checkbox" name="clear_llm_api_key" value="1"> حذف کلید ذخیره‌شده</span>{% endif %}</label>
-  <label><span>مدل *</span><input name="llm_model" id="model" class="ltr" list="model_list" value="{{ settings.llm_model }}"><datalist id="model_list"></datalist>
-    <small class="help">اسم مدلی که روی سرور هست. دکمه‌ی «دریافت لیست مدل‌ها» را بزن تا از خود سرور بخواند و از لیست انتخاب کنی.</small>
-    <button type="button" class="sec" id="fetch_models" style="margin-top:6px">دریافت لیست مدل‌ها از سرور</button>
-    <small class="help" id="models_msg"></small></label>
-</div>
-
-<div class="grid" data-for="anthropic">
-  <label><span>کلید API Anthropic *</span><input name="anthropic_api_key" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_anthropic_key else 'sk-ant-...' }}">
-    <small class="help">از console.anthropic.com ← API Keys.</small>
-    {% if has_anthropic_key %}<span class="check"><input type="checkbox" name="clear_anthropic_api_key" value="1"> حذف کلید</span>{% endif %}</label>
-  <label><span>مدل Claude</span><input name="anthropic_model" class="ltr" value="{{ settings.anthropic_model }}"></label>
-</div>
-
-<div class="grid" data-for="ollama openai anthropic">
-  <label><span>حداکثر زمان انتظار برای هر متن (ثانیه)</span><input name="llm_timeout_sec" type="number" min="30" value="{{ settings.llm_timeout_sec|int }}">
-    <small class="help">مدل روی CPU کند است؛ برای مقاله‌ی کامل ۶۰۰ ثانیه مناسب است.</small></label>
-</div>
-
-<details class="guide" data-for="ollama"><summary>سرور Ollama را چطور آماده کنم که از بیرون وصل شود؟</summary>
-  <ol>
-    <li>Ollama به‌طور پیش‌فرض فقط به خود همان سرور جواب می‌دهد. روی سرور Ollama بزن: <code class="ltr">sudo systemctl edit ollama</code></li>
-    <li>این دو خط را اضافه کن و ذخیره کن: <code class="ltr">[Service]</code> و <code class="ltr">Environment="OLLAMA_HOST=0.0.0.0:11434"</code></li>
-    <li><code class="ltr">sudo systemctl restart ollama</code></li>
-    <li>Ollama رمز ندارد؛ پورت را فقط برای آی‌پی سرور این داشبورد باز کن: <code class="ltr">sudo ufw allow from IP-این-سرور to any port 11434</code></li>
-    <li>مدل را اگر نداری دانلود کن، مثلاً: <code class="ltr">ollama pull qwen2.5:14b</code> — لیست مدل‌ها: <code class="ltr">ollama list</code></li>
-  </ol>
-</details>
-</div>
-
-<div class="card" id="images"><h2>تولید تصویر برای پست‌ها (اینستاگرام / پینترست)</h2>
-<p class="muted">اگر سرور تولید تصویر داری، برای هر پست اینستاگرام/پینترست یک تصویر تازه ساخته می‌شود: هوش مصنوعی از روی متن پست یک توضیح تصویر می‌نویسد و سرور تصویرت آن را می‌سازد. اگر تولید تصویر خطا بدهد، تصویر ثابت سایت (اگر گذاشته باشی) استفاده می‌شود.</p>
-<div class="grid">
-  <label><span>نوع سرور تصویر</span>
-    <select name="image_provider" id="img_provider">
-      {% for k, v in [('off','خاموش — فقط از تصویر ثابت سایت استفاده شود'),('a1111','Stable Diffusion WebUI (AUTOMATIC1111 / Forge / SD.Next)'),('comfyui','ComfyUI'),('openai','سرویس سازگار با OpenAI Images API')] %}
-      <option value="{{ k }}" {{ 'selected' if settings.image_provider == k }}>{{ v }}</option>{% endfor %}
-    </select>
-    <small class="help" data-img="a1111">WebUI باید با گزینه‌ی <code>--api</code> اجرا شده باشد (و برای دسترسی از بیرون <code>--listen</code>).</small>
-    <small class="help" data-img="comfyui">ComfyUI را با <code>--listen 0.0.0.0</code> اجرا کن تا از بیرون در دسترس باشد.</small>
-    <small class="help" data-img="openai">هر سرویسی که <code>/v1/images/generations</code> دارد (LocalAI، سرویس‌های واسط و ...).</small></label>
-</div>
-<div class="grid" data-img="a1111 comfyui openai">
-  <label><span>آدرس سرور تصویر *</span><input name="image_base_url" class="ltr" value="{{ settings.image_base_url }}" placeholder="http://1.2.3.4:7860">
-    <small class="help" data-img="a1111">آی‌پی و پورت WebUI؛ پیش‌فرض پورت <code>7860</code>. مثل <code>http://1.2.3.4:7860</code></small>
-    <small class="help" data-img="comfyui">آی‌پی و پورت ComfyUI؛ پیش‌فرض پورت <code>8188</code>. مثل <code>http://1.2.3.4:8188</code></small>
-    <small class="help" data-img="openai">آدرس پایه که به <code>/v1</code> ختم می‌شود.</small></label>
-  <label><span>کلید / توکن</span><input name="image_api_key" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_image_key else 'اختیاری' }}">
-    <small class="help">فقط اگر جلوی سرور تصویرت رمز (Bearer token) گذاشته‌ای.</small>
-    {% if has_image_key %}<span class="check"><input type="checkbox" name="clear_image_api_key" value="1"> حذف کلید</span>{% endif %}</label>
-  <label data-img="a1111 openai"><span>مدل (اختیاری)</span><input name="image_model" class="ltr" value="{{ settings.image_model }}">
-    <small class="help" data-img="a1111">اسم checkpoint (مثل sd_xl_base_1.0.safetensors). خالی = همان مدلی که الان در WebUI انتخاب شده.</small>
-    <small class="help" data-img="openai">اسم مدل تصویر در آن سرویس.</small></label>
-  <label><span>عرض × ارتفاع (پیکسل)</span>
-    <span style="display:flex;gap:6px"><input name="image_width" type="number" min="256" step="64" value="{{ settings.image_width }}"><input name="image_height" type="number" min="256" step="64" value="{{ settings.image_height }}"></span>
-    <small class="help">برای اینستاگرام مربع ۱۰۲۴×۱۰۲۴ یا عمودی ۸۹۶×۱۱۵۲ مناسب است.</small></label>
-  <label data-img="a1111 comfyui"><span>تعداد گام (steps)</span><input name="image_steps" type="number" min="1" max="150" value="{{ settings.image_steps }}">
-    <small class="help">۲۰ تا ۳۰ معمول است؛ برای مدل‌های سریع (Turbo / Lightning) ۴ تا ۸.</small></label>
-  <label><span>حداکثر زمان انتظار (ثانیه)</span><input name="image_timeout_sec" type="number" min="30" value="{{ settings.image_timeout_sec|int }}"></label>
-</div>
-<div class="grid" data-img="a1111 comfyui openai">
-  <label><span>سبک ثابت تصویر</span><input name="image_style" class="ltr" value="{{ settings.image_style }}">
-    <small class="help">به آخر توضیح هر تصویر اضافه می‌شود تا همه‌ی پست‌ها یک سبک داشته باشند؛ مثل <code>professional photo, natural light</code>.</small></label>
-  <label data-img="a1111 comfyui"><span>چیزهایی که نباید در تصویر باشد (negative prompt)</span><input name="image_negative_prompt" class="ltr" value="{{ settings.image_negative_prompt }}"></label>
-</div>
-<label data-img="comfyui"><span>Workflow کامفی‌یوآی (API Format) *</span>
-  <textarea name="image_comfy_workflow" class="ltr" style="min-height:140px" placeholder='{"6": {"inputs": {"text": "{{ '{{' }}prompt{{ '}}' }}", ...}, ...}'>{{ settings.image_comfy_workflow }}</textarea>
-  <small class="help">در ComfyUI ورک‌فلوی خودت را باز کن ← از تنظیمات «Enable Dev mode Options» را روشن کن ← منو ← «Save (API Format)» ← محتوای فایل JSON را این‌جا بچسبان.
-  بعد در متن نود prompt مثبت به‌جای متن بنویس <code>{{ '{{' }}prompt{{ '}}' }}</code>. اختیاری: <code>{{ '{{' }}negative{{ '}}' }}</code>، <code>{{ '{{' }}seed{{ '}}' }}</code>، <code>{{ '{{' }}width{{ '}}' }}</code>، <code>{{ '{{' }}height{{ '}}' }}</code>، <code>{{ '{{' }}steps{{ '}}' }}</code>.</small></label>
-{% if test_image %}<p><img src="{{ test_image }}" alt="" style="max-width:320px;border-radius:8px"></p>{% endif %}
-<p class="muted" style="font-size:12px">اول «ذخیره‌ی تنظیمات» را بزن، بعد پایین صفحه «تست تولید تصویر».</p>
-</div>
-
 <div class="card"><h2>انتشار</h2>
 <div class="grid">
-  <label class="check" style="display:flex"><input type="checkbox" name="dry_run" value="1" {{ 'checked' if settings.dry_run }}> حالت آزمایشی (DRY RUN)
-    </label>
+  <label class="check" style="display:flex"><input type="checkbox" name="dry_run" value="1" {{ 'checked' if settings.dry_run }}> حالت آزمایشی (DRY RUN)</label>
   <label><span>آدرس عمومی این داشبورد</span><input name="public_url" class="ltr" value="{{ settings.public_url }}" placeholder="https://cm.nojanteb.ir">
-    <small class="help">لینک تصاویر آپلودشده با این آدرس ساخته می‌شود تا اینستاگرام/پینترست بتوانند دانلودشان کنند.</small></label>
-  <label><span>پراکسی انتشار</span><input name="publish_proxy" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_proxy else 'http://user:pass@1.2.3.4:3128' }}">
-    <small class="help">سرور ایران به تلگرام، X، فیسبوک، اینستاگرام و ... وصل نمی‌شود. یک پراکسی HTTP روی سرور خارج بگذار؛ فقط برای انتشار استفاده می‌شود (هوش مصنوعی از آن رد نمی‌شود).</small>
+    <small class="help">لینک تصاویر با این آدرس ساخته می‌شود تا اینستاگرام/پینترست بتوانند دانلودشان کنند.</small></label>
+  <label><span>پراکسی انتشار (HTTP)</span><input name="publish_proxy" class="ltr" type="password" autocomplete="new-password" placeholder="{{ 'ذخیره شده — خالی = بدون تغییر' if has_proxy else 'http://user:pass@1.2.3.4:3128' }}">
+    <small class="help">فقط برای درخواست‌های انتشار استفاده می‌شود.</small>
     {% if has_proxy %}<span class="check"><input type="checkbox" name="clear_publish_proxy" value="1"> حذف پراکسی</span>{% endif %}</label>
 </div>
-<p class="muted" style="font-size:12px">حالت آزمایشی روشن = محتوا ساخته و در «انتشارها» نشان داده می‌شود ولی واقعاً جایی منتشر نمی‌شود. وقتی از خروجی راضی بودی خاموشش کن.</p>
+<p class="muted" style="font-size:12px">حالت آزمایشی روشن = محتوا ساخته و در «انتشارها» نشان داده می‌شود ولی واقعاً جایی منتشر نمی‌شود.</p>
+<button>ذخیره‌ی تنظیمات انتشار</button>
 </div>
-
-<button>ذخیره‌ی تنظیمات</button>
 </form>
-<form class="inline" method="post" action="/llm-test?next=/settings" style="margin-top:10px"><button class="sec">تست اتصال هوش مصنوعی (با تنظیمات ذخیره‌شده)</button></form>
-<form class="inline" method="post" action="/settings/image-test" onsubmit="this.querySelector('button').textContent='در حال ساخت تصویر... (ممکن است چند دقیقه طول بکشد)'"><button class="sec">تست تولید تصویر</button></form>
 
 <style>
 .help{display:block;color:var(--muted);font-size:12px;margin-top:3px;line-height:1.7}
@@ -116,29 +136,21 @@
 .guide summary{cursor:pointer;font-weight:bold}.guide ol{padding-right:20px}.guide li{margin-bottom:6px}
 </style>
 <script>
-const HELP = {
-  ollama: 'Ollama روی سرور خودت (پیشنهادی). آدرس سرور و اسم مدل را بده.',
-  openai: 'هر سرویسی که API آن شبیه OpenAI است: vLLM، LM Studio، LocalAI، OpenRouter و ...',
-  anthropic: 'API رسمی Claude؛ به کلید Anthropic نیاز دارد.',
-  fake: 'برای امتحان بقیه‌ی سیستم بدون هوش مصنوعی؛ یک متن آزمایشی ثابت می‌سازد. برای انتشار واقعی استفاده نکن.'
-};
+const KIND = {{ kind|tojson }}, CONN_ID = {{ (c.id if c else 0)|tojson }};
 const prov = document.getElementById('provider');
+function key(){ return prov.value === 'openai' ? 'openai-' + KIND : prov.value; }
 function show(){
-  document.getElementById('provider_help').textContent = HELP[prov.value];
-  document.querySelectorAll('[data-for]').forEach(e => { e.style.display = e.dataset.for.split(' ').includes(prov.value) ? '' : 'none'; });
+  const k = key();
+  document.querySelectorAll('[data-p]').forEach(e => { e.style.display = e.dataset.p.split(' ').includes(k) ? '' : 'none'; });
 }
 prov.addEventListener('change', show); window.addEventListener('pageshow', show); show();
-const imgProv = document.getElementById('img_provider');
-function showImg(){
-  document.querySelectorAll('[data-img]').forEach(e => { e.style.display = e.dataset.img.split(' ').includes(imgProv.value) ? '' : 'none'; });
-}
-imgProv.addEventListener('change', showImg); window.addEventListener('pageshow', showImg); showImg();
 
-document.getElementById('fetch_models').addEventListener('click', async () => {
+const fetchBtn = document.getElementById('fetch_models');
+if (fetchBtn) fetchBtn.addEventListener('click', async () => {
   const msg = document.getElementById('models_msg'), list = document.getElementById('model_list');
   msg.textContent = 'در حال اتصال به سرور...';
   const q = new URLSearchParams({provider: prov.value, base_url: document.getElementById('base_url').value,
-                                 api_key: document.getElementById('api_key').value});
+                                 api_key: document.getElementById('api_key').value, conn_id: CONN_ID});
   try {
     const r = await (await fetch('/settings/models?' + q)).json();
     list.innerHTML = '';

@@ -71,6 +71,37 @@ class Account(SQLModel, table=True):
         return self.enabled and self.status == "ok"
 
 
+class AIConnection(SQLModel, table=True):
+    """One AI server: "text" (writes posts/articles) or "image" (renders post images). Many can be added."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    name: str
+    kind: str = "text"  # text | image
+    provider: str = "ollama"  # text: ollama | openai | anthropic | fake — image: a1111 | comfyui | openai
+    base_url: str = ""
+    api_key_enc: str = ""
+    model: str = ""
+    options: dict = _json({})  # image: width, height, steps, style, negative_prompt, comfy_workflow; timeout_sec
+    enabled: bool = True
+    is_default: bool = False
+    last_test_ok: Optional[bool] = None
+    last_test_msg: str = ""
+    last_test_at: Optional[NaiveDatetime] = None
+
+    @property
+    def api_key(self) -> str:
+        return crypto.decrypt(self.api_key_enc).get("v", "") if self.api_key_enc else ""
+
+    @api_key.setter
+    def api_key(self, value: str) -> None:
+        self.api_key_enc = crypto.encrypt({"v": value}) if value else ""
+
+    def opt(self, key: str, default: Any = None) -> Any:
+        v = (self.options or {}).get(key)
+        return default if v in (None, "") else v
+
+
 class Campaign(SQLModel, table=True):
     """Schedule: publish AI content for one site through a set of accounts at random intervals."""
 
@@ -97,6 +128,8 @@ class Campaign(SQLModel, table=True):
     daily_limit: int = 4
     total_limit: int = 0  # 0 = unlimited
     extra_instructions: str = ""
+    text_ai_id: Optional[int] = None  # None = default AI connection
+    image_ai_id: Optional[int] = None
     next_run_at: Optional[NaiveDatetime] = None
     last_run_at: Optional[NaiveDatetime] = None
 

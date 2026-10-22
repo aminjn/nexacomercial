@@ -171,22 +171,3 @@ def test_old_database_gets_new_columns(tmp_path, monkeypatch):
     m._add_missing_columns(eng)
     cols = {r[1] for r in sqlite3.connect(db).execute("PRAGMA table_info(publication)")}
     assert {"image_url", "body_preview", "status"} <= cols
-
-
-def test_settings_image_test_button(monkeypatch, img_settings):
-    from fastapi.testclient import TestClient
-
-    from app.main import app
-    with TestClient(app) as client:
-        client.post("/settings", data={"llm_provider": "fake", "image_provider": "a1111",
-                                       "image_base_url": "http://gpu:7860", "image_width": "896",
-                                       "image_height": "1152", "public_url": "https://cm.example.ir"})
-        assert (settings.image_provider, settings.image_width) == ("a1111", 896)
-        monkeypatch.setattr(httpx, "post", lambda url, **kw: httpx.Response(
-            200, json={"images": [base64.b64encode(png_bytes()).decode()]}))
-        r = client.post("/settings/image-test")
-        assert "تصویر ساخته شد" in r.text and '<img src="/media/test-' in r.text
-        r = client.post("/settings", data={"llm_provider": "fake", "image_provider": "comfyui",
-                                           "image_comfy_workflow": "{not json"})
-        assert "JSON معتبر نیست" in r.text
-        client.post("/settings", data={"llm_provider": "fake", "image_provider": "off"})

@@ -11,10 +11,15 @@
 
 <div class="card">
   <h2>هوش مصنوعی</h2>
-  <p class="muted" style="margin:0 0 8px">نوع: <code>{{ settings.llm_provider }}</code> · آدرس: <code>{{ settings.llm_base_url if settings.llm_provider != 'anthropic' else 'Claude API' }}</code> · مدل: <code>{{ settings.llm_model if settings.llm_provider != 'anthropic' else settings.anthropic_model }}</code></p>
-  <form class="inline" method="post" action="/llm-test"><button class="sec">تست هوش مصنوعی</button></form>
-  <a class="btn" href="/settings">تنظیم هوش مصنوعی</a>
-  <span class="muted" style="font-size:12px">تا هوش مصنوعی وصل نباشد هیچ محتوایی ساخته نمی‌شود.</span>
+  {% set t = ai_summary.text %}{% set im = ai_summary.image %}
+  <p style="margin:0 0 8px">
+    متن: {% if t.count %}<b>{{ t.enabled }}</b> اتصال فعال — پیش‌فرض: <b>{{ t.default.name if t.default else '—' }}</b>
+      {% if t.default and t.default.last_test_ok is not none %}<span class="{{ 'ok' if t.default.last_test_ok else 'error' }}">{{ '● وصل' if t.default.last_test_ok else '● خطا در آخرین تست' }}</span>{% endif %}
+    {% else %}<span class="error">هیچ اتصالی تعریف نشده</span>{% endif %}
+    &nbsp;·&nbsp; تصویر: {% if im.count %}<b>{{ im.enabled }}</b> اتصال فعال — پیش‌فرض: <b>{{ im.default.name if im.default else '—' }}</b>{% else %}<span class="muted">ندارد (از تصویر ثابت سایت استفاده می‌شود)</span>{% endif %}
+  </p>
+  <form class="inline" method="post" action="/llm-test"><button class="sec">تست هوش مصنوعی پیش‌فرض</button></form>
+  <a class="btn" href="/settings#ai">مدیریت اتصال‌های هوش مصنوعی</a>
 </div>
 
 <div class="card">

@@ -14,6 +14,7 @@ import logging
 import secrets
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -29,36 +30,64 @@ class ImageError(RuntimeError):
     pass
 
 
+PROVIDER_NAMES = ("a1111", "comfyui", "openai")
+
+
+@dataclass
+class ImageCfg:
+    provider: str
+    base_url: str
+    api_key: str = ""
+    model: str = ""
+    width: int = 1024
+    height: int = 1024
+    steps: int = 25
+    negative_prompt: str = ""
+    style: str = ""
+    comfy_workflow: str = ""
+    timeout_sec: float = 300.0
+
+
+def cfg_from_settings() -> ImageCfg | None:
+    """Legacy single image server from .env / old settings (used when no image connection exists)."""
+    if settings.image_provider not in PROVIDER_NAMES:
+        return None
+    return ImageCfg(settings.image_provider, settings.image_base_url, settings.image_api_key, settings.image_model,
+                    settings.image_width, settings.image_height, settings.image_steps,
+                    settings.image_negative_prompt, settings.image_style, settings.image_comfy_workflow,
+                    settings.image_timeout_sec)
+
+
 def enabled() -> bool:
-    return settings.image_provider in ("a1111", "comfyui", "openai")
+    return cfg_from_settings() is not None
 
 
-def _headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {settings.image_api_key}"} if settings.image_api_key else {}
+def _headers(cfg: ImageCfg) -> dict[str, str]:
+    return {"Authorization": f"Bearer {cfg.api_key}"} if cfg.api_key else {}
 
 
-def _base() -> str:
-    if not settings.image_base_url:
-        raise ImageError("آدرس سرور تولید تصویر در تنظیمات خالی است")
-    return settings.image_base_url.rstrip("/")
+def _base(cfg: ImageCfg) -> str:
+    if not cfg.base_url:
+        raise ImageError("آدرس سرور تولید تصویر خالی است")
+    return cfg.base_url.rstrip("/")
 
 
 # ---------------------------------------------------------------- providers → raw image bytes
 
 
-def _a1111(prompt: str) -> bytes:
+def _a1111(prompt: str, cfg: ImageCfg) -> bytes:
     body: dict[str, Any] = {
         "prompt": prompt,
-        "negative_prompt": settings.image_negative_prompt,
-        "width": settings.image_width,
-        "height": settings.image_height,
-        "steps": settings.image_steps,
+        "negative_prompt": cfg.negative_prompt,
+        "width": cfg.width,
+        "height": cfg.height,
+        "steps": cfg.steps,
         "batch_size": 1,
         "n_iter": 1,
     }
-    if settings.image_model:
-        body["override_settings"] = {"sd_model_checkpoint": settings.image_model}
-    r = httpx.post(f"{_base()}/sdapi/v1/txt2img", json=body, headers=_headers(), timeout=settings.image_timeout_sec)
+    if cfg.model:
+        body["override_settings"] = {"sd_model_checkpoint": cfg.model}
+    r = httpx.post(f"{_base(cfg)}/sdapi/v1/txt2img", json=body, headers=_headers(cfg), timeout=cfg.timeout_sec)
     if r.status_code >= 400:
         raise ImageError(f"HTTP {r.status_code}: {r.text[:300]}")
     images = r.json().get("images") or []
@@ -67,19 +96,19 @@ def _a1111(prompt: str) -> bytes:
     return base64.b64decode(images[0].split(",", 1)[-1])
 
 
-def _openai(prompt: str) -> bytes:
-    body: dict[str, Any] = {"prompt": prompt, "n": 1, "size": f"{settings.image_width}x{settings.image_height}",
+def _openai(prompt: str, cfg: ImageCfg) -> bytes:
+    body: dict[str, Any] = {"prompt": prompt, "n": 1, "size": f"{cfg.width}x{cfg.height}",
                             "response_format": "b64_json"}
-    if settings.image_model:
-        body["model"] = settings.image_model
-    r = httpx.post(f"{_base()}/images/generations", json=body, headers=_headers(), timeout=settings.image_timeout_sec)
+    if cfg.model:
+        body["model"] = cfg.model
+    r = httpx.post(f"{_base(cfg)}/images/generations", json=body, headers=_headers(cfg), timeout=cfg.timeout_sec)
     if r.status_code >= 400:
         raise ImageError(f"HTTP {r.status_code}: {r.text[:300]}")
     item = (r.json().get("data") or [{}])[0]
     if item.get("b64_json"):
         return base64.b64decode(item["b64_json"])
     if item.get("url"):
-        return httpx.get(item["url"], timeout=settings.image_timeout_sec, follow_redirects=True).content
+        return httpx.get(item["url"], timeout=cfg.timeout_sec, follow_redirects=True).content
     raise ImageError("سرور تصویری برنگرداند")
 
 
@@ -98,23 +127,23 @@ def _fill(node: Any, values: dict[str, Any]) -> Any:
     return node
 
 
-def _comfyui(prompt: str) -> bytes:
-    if not settings.image_comfy_workflow.strip():
+def _comfyui(prompt: str, cfg: ImageCfg) -> bytes:
+    if not cfg.comfy_workflow.strip():
         raise ImageError("برای ComfyUI باید workflow (API Format) را در تنظیمات بگذاری")
     try:
-        workflow = json.loads(settings.image_comfy_workflow)
+        workflow = json.loads(cfg.comfy_workflow)
     except json.JSONDecodeError as e:
         raise ImageError(f"workflow معتبر نیست: {e}") from None
     graph = _fill(workflow, {
-        "prompt": prompt, "negative": settings.image_negative_prompt, "seed": secrets.randbelow(2**31),
-        "width": settings.image_width, "height": settings.image_height, "steps": settings.image_steps,
+        "prompt": prompt, "negative": cfg.negative_prompt, "seed": secrets.randbelow(2**31),
+        "width": cfg.width, "height": cfg.height, "steps": cfg.steps,
     })
-    base, h = _base(), _headers()
+    base, h = _base(cfg), _headers(cfg)
     r = httpx.post(f"{base}/prompt", json={"prompt": graph, "client_id": uuid.uuid4().hex}, headers=h, timeout=30)
     if r.status_code >= 400:
         raise ImageError(f"HTTP {r.status_code}: {r.text[:300]}")
     prompt_id = r.json()["prompt_id"]
-    deadline = time.monotonic() + settings.image_timeout_sec
+    deadline = time.monotonic() + cfg.timeout_sec
     while time.monotonic() < deadline:
         hist = httpx.get(f"{base}/history/{prompt_id}", headers=h, timeout=30).json().get(prompt_id)
         if hist:
@@ -133,11 +162,14 @@ def _comfyui(prompt: str) -> bytes:
 PROVIDERS = {"a1111": _a1111, "openai": _openai, "comfyui": _comfyui}
 
 
-def generate_bytes(prompt: str) -> bytes:
-    if not enabled():
-        raise ImageError("تولید تصویر در تنظیمات خاموش است")
-    full = ", ".join(x for x in (prompt, settings.image_style) if x)
-    return PROVIDERS[settings.image_provider](full)
+def generate_bytes(prompt: str, cfg: ImageCfg | None = None) -> bytes:
+    cfg = cfg or cfg_from_settings()
+    if cfg is None:
+        raise ImageError("هیچ سرور تولید تصویری تنظیم نشده")
+    if cfg.provider not in PROVIDERS:
+        raise ImageError(f"نوع سرور تصویر نامعتبر: {cfg.provider}")
+    full = ", ".join(x for x in (prompt, cfg.style) if x)
+    return PROVIDERS[cfg.provider](full, cfg)
 
 
 # ---------------------------------------------------------------- storage / format
@@ -210,12 +242,12 @@ def write_prompt(llm: LLM, niche: str, description: str, text: str) -> str:
 
 
 def generate_for_post(llm: LLM, niche: str, description: str, text: str, *,
-                      public: bool = True) -> tuple[str, str]:
+                      public: bool = True, render=None) -> tuple[str, str]:
     """Write a prompt, render it on the image server, store as JPEG. Returns (url, prompt).
 
     public=True requires the dashboard's public URL (Instagram must be able to download the file)."""
     if public:
         public_url_for("check")  # fail fast, before spending GPU time
     prompt = write_prompt(llm, niche, description, text)
-    name = store_jpeg(generate_bytes(prompt))
+    name = store_jpeg((render or generate_bytes)(prompt))
     return public_url_for(name, required=public), prompt

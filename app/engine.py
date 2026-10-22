@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from sqlmodel import Session, select
 
-from . import images
+from . import ai, images
 from . import models as m
 from .config import settings
 from .content import generate_article, generate_social
@@ -104,7 +104,8 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
         creds = account.creds
         pub = make(account.kind, creds)
         stage = "ai"
-        llm = get_llm()
+        # AI connections from Settings (campaign's choice → default → others, with failover); .env as last resort
+        llm = ai.llm_for(campaign.text_ai_id if campaign else None) or get_llm()
         if pub.category == "article":
             with m.session() as s:
                 recent = m.recent_titles(s, site.id)
@@ -118,11 +119,12 @@ def publish(site: m.Site, account: m.Account, *, campaign: m.Campaign | None = N
             rec.title, rec.link_url = post.text[:120], post.link_url
             rec.body_preview = post.render()[:600]
             if pub.needs_image:
-                if images.enabled():
+                render = ai.image_renderer(campaign.image_ai_id if campaign else None)
+                if render or images.enabled():
                     stage = "image"
                     try:
                         post.image_url, prompt = images.generate_for_post(
-                            llm, site.niche or site.name, site.description, post.text, public=not dry)
+                            llm, site.niche or site.name, site.description, post.text, public=not dry, render=render)
                         rec.body_preview = (rec.body_preview + "\n\n[image prompt] " + prompt)[:900]
                     except Exception:
                         if not (post.image_url or creds.get("image_url")):

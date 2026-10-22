@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import select
 
-from . import engine, importer, runtime, scheduler
+from . import ai, engine, importer, runtime, scheduler
 from . import models as m
 from .config import settings
 from .publishers import REGISTRY
@@ -42,6 +42,7 @@ def auth(creds: HTTPBasicCredentials | None = Depends(security)) -> None:
 async def lifespan(_: FastAPI):
     m.engine()
     runtime.apply()
+    ai.seed_from_settings()
     if settings.scheduler_enabled:
         scheduler.start()
     yield
@@ -70,7 +71,10 @@ def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
 
 def back(url: str, msg: str = "") -> RedirectResponse:
     from urllib.parse import quote
-    return RedirectResponse(f"{url}?msg={quote(msg)}" if msg else url, status_code=303)
+    if msg:
+        path, _, frag = url.partition("#")
+        url = f"{path}{'&' if '?' in path else '?'}msg={quote(msg)}" + (f"#{frag}" if frag else "")
+    return RedirectResponse(url, status_code=303)
 
 
 def _list(v: str) -> list[str]:
@@ -114,7 +118,8 @@ def dashboard(request: Request):
             "today": m.count_since(s, today, status="ok"),
             "live": len(s.exec(select(m.Publication).where(m.Publication.link_found == True)).all()),  # noqa: E712
         }
-    return render(request, "dashboard.html", rows=rows, pubs=pubs, logs=logs, stats=stats, sites=sites)
+    return render(request, "dashboard.html", rows=rows, pubs=pubs, logs=logs, stats=stats, sites=sites,
+                  ai_summary=ai.summary())
 
 
 @app.post("/tick", dependencies=protected)
@@ -125,8 +130,14 @@ def tick_now(dry: bool = False):
 
 @app.post("/llm-test", dependencies=protected)
 def llm_test(next: str = "/"):
-    from .llm import llm_check
-    ok, msg = llm_check()
+    """Test the default text AI connection (or the .env fallback when none is configured)."""
+    conns = ai.chain("text")
+    if conns:
+        ok, msg, _ = ai.test(conns[0])
+        msg = f"«{conns[0].name}»: {msg}"
+    else:
+        from .llm import llm_check
+        ok, msg = llm_check()
     return back(next if next.startswith("/") else "/", ("هوش مصنوعی: " if ok else "هوش مصنوعی وصل نیست: ") + msg)
 
 
@@ -134,78 +145,102 @@ def llm_test(next: str = "/"):
 
 
 @app.get("/settings", response_class=HTMLResponse, dependencies=protected)
-def settings_page(request: Request):
-    return render(request, "settings.html", has_llm_key=bool(settings.llm_api_key),
-                  has_image_key=bool(settings.image_api_key), test_image=request.query_params.get("img", ""),
-                  has_anthropic_key=bool(settings.anthropic_api_key), has_proxy=bool(settings.publish_proxy))
+def settings_page(request: Request, edit: int = 0, new: str = ""):
+    with m.session() as s:
+        conns = s.exec(select(m.AIConnection).order_by(m.AIConnection.kind.desc(), m.AIConnection.id)).all()
+    current = next((c for c in conns if c.id == edit), None)
+    return render(request, "settings.html", conns=conns, current=current,
+                  new_kind=new if new in ("text", "image") else ("" if current else "text"),
+                  text_providers=ai.TEXT_PROVIDERS, image_providers=ai.IMAGE_PROVIDERS,
+                  test_image=request.query_params.get("img", ""), has_proxy=bool(settings.publish_proxy))
 
 
 @app.post("/settings", dependencies=protected)
 async def settings_save(request: Request):
+    """General settings (publishing). AI servers are managed as connections below."""
     f = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
-    provider = f.get("llm_provider", "ollama")
-    if provider not in ("ollama", "openai", "anthropic", "fake"):
-        return back("/settings", "نوع هوش مصنوعی نامعتبر است")
-    values: dict[str, Any] = {
-        "llm_provider": provider,
-        "llm_base_url": f.get("llm_base_url", "").strip(),
-        "llm_model": f.get("llm_model", "").strip(),
-        "anthropic_model": f.get("anthropic_model", "").strip() or settings.anthropic_model,
-        "llm_timeout_sec": float(f.get("llm_timeout_sec") or 600),
-        "public_url": f.get("public_url", "").strip().rstrip("/"),
-        "dry_run": bool(f.get("dry_run")),
-    }
-    if f.get("image_provider") in ("off", "a1111", "comfyui", "openai"):
-        workflow = f.get("image_comfy_workflow", "").strip()
-        if workflow:
-            try:
-                json.loads(workflow)
-            except json.JSONDecodeError as e:
-                return back("/settings", f"workflow کامفی‌یوآی JSON معتبر نیست: {e}")
-        values.update({
-            "image_provider": f["image_provider"],
-            "image_base_url": f.get("image_base_url", "").strip(),
-            "image_model": f.get("image_model", "").strip(),
-            "image_width": int(f.get("image_width") or 1024),
-            "image_height": int(f.get("image_height") or 1024),
-            "image_steps": int(f.get("image_steps") or 25),
-            "image_negative_prompt": f.get("image_negative_prompt", ""),
-            "image_style": f.get("image_style", ""),
-            "image_comfy_workflow": workflow,
-            "image_timeout_sec": float(f.get("image_timeout_sec") or 300),
-        })
-    # secrets: empty field = keep; "clear" checkbox = remove
-    for key in ("llm_api_key", "anthropic_api_key", "publish_proxy", "image_api_key"):
-        v = f.get(key, "").strip()
-        if v or f.get(f"clear_{key}"):
-            values[key] = v
+    values: dict[str, Any] = {"public_url": f.get("public_url", "").strip().rstrip("/"), "dry_run": bool(f.get("dry_run"))}
+    v = f.get("publish_proxy", "").strip()
+    if v or f.get("clear_publish_proxy"):
+        values["publish_proxy"] = v
     runtime.save(values)
     return back("/settings", "تنظیمات ذخیره شد")
 
 
-@app.post("/settings/image-test", dependencies=protected)
-def settings_image_test(prompt: str = ""):
-    """Render one image with the saved settings and show it on the settings page."""
-    from urllib.parse import quote
+@app.post("/ai", dependencies=protected)
+async def ai_save(request: Request):
+    f = {k: v for k, v in (await request.form()).items() if isinstance(v, str)}
+    kind = f.get("kind", "text")
+    providers = ai.TEXT_PROVIDERS if kind == "text" else ai.IMAGE_PROVIDERS
+    provider = f.get("provider", "")
+    if kind not in ("text", "image") or provider not in providers:
+        return back("/settings", "نوع اتصال نامعتبر است")
+    workflow = f.get("comfy_workflow", "").strip()
+    if kind == "image" and provider == "comfyui":
+        try:
+            json.loads(workflow or "x")
+        except json.JSONDecodeError as e:
+            return back(f"/settings?edit={f.get('id', '')}" if f.get("id") else f"/settings?new={kind}",
+                        f"workflow کامفی‌یوآی JSON معتبر نیست: {e}")
+    with m.session() as s:
+        c = s.get(m.AIConnection, int(f["id"])) if f.get("id") else m.AIConnection(name="", kind=kind)
+        if c is None:
+            raise HTTPException(404)
+        c.name = f.get("name", "").strip() or providers[provider].split(" (")[0]
+        c.kind, c.provider = kind, provider
+        c.base_url = f.get("base_url", "").strip().rstrip("/")
+        c.model = f.get("model", "").strip()
+        opts: dict[str, Any] = {"timeout_sec": float(f.get("timeout_sec") or (600 if kind == "text" else 300))}
+        if kind == "image":
+            opts.update(width=int(f.get("width") or 1024), height=int(f.get("height") or 1024),
+                        steps=int(f.get("steps") or 25), style=f.get("style", ""),
+                        negative_prompt=f.get("negative_prompt", ""), comfy_workflow=workflow)
+        c.options = opts
+        key = f.get("api_key", "").strip()
+        if key or f.get("clear_api_key"):
+            c.api_key = key
+        c.enabled = bool(f.get("enabled")) if f.get("id") else True
+        s.add(c)
+        s.commit()
+        s.refresh(c)
+    if f.get("is_default"):
+        ai.set_default(c.id)
+    ai.ensure_default(kind)
+    return back(f"/settings#ai-{c.id}", f"اتصال «{c.name}» ذخیره شد — حالا «تست» را بزن")
 
-    from . import images
-    try:
-        if not prompt:
-            from .llm import get_llm
-            prompt = images.write_prompt(get_llm(), "املاک", "مشاور املاک و خرید و فروش آپارتمان",
-                                         "سه نکته برای خرید اولین آپارتمان")
-        name = images.store_jpeg(images.generate_bytes(prompt), prefix="test")
-    except Exception as e:  # noqa: BLE001
-        return back("/settings", engine.explain_error("image", "", e))
-    return RedirectResponse(f"/settings?img=/media/{name}&msg={quote('تصویر ساخته شد ✓ توضیح تصویر: ' + prompt)}#images",
-                            status_code=303)
+
+@app.post("/ai/{conn_id}/{action}", dependencies=protected)
+def ai_action(conn_id: int, action: str):
+    from urllib.parse import quote
+    conn = _get(m.AIConnection, conn_id)
+    if action == "test":
+        ok, msg, img = ai.test(conn)
+        q = f"&img={quote(img)}" if img else ""
+        return RedirectResponse(f"/settings?msg={quote(('«' + conn.name + '»: ') + msg)}{q}#ai-{conn_id}", status_code=303)
+    if action == "default":
+        ai.set_default(conn_id)
+    elif action in ("toggle", "delete"):
+        with m.session() as s:
+            row = s.get(m.AIConnection, conn_id)
+            if action == "delete":
+                s.delete(row)
+            else:
+                row.enabled = not row.enabled
+                s.add(row)
+            s.commit()
+        ai.ensure_default(conn.kind)
+    else:
+        raise HTTPException(400)
+    return back("/settings", "انجام شد")
 
 
 @app.get("/settings/models", dependencies=protected)
-def settings_models(provider: str, base_url: str, api_key: str = ""):
+def settings_models(provider: str, base_url: str, api_key: str = "", conn_id: int = 0):
     from .llm import list_models
+    if not api_key and conn_id:
+        api_key = _get(m.AIConnection, conn_id).api_key
     try:
-        return {"models": list_models(provider, base_url, api_key or settings.llm_api_key)}
+        return {"models": list_models(provider, base_url, api_key)}
     except Exception as e:  # noqa: BLE001
         return {"models": [], "error": engine.explain_error("ai", "", e)}
 
@@ -416,8 +451,9 @@ def campaigns_page(request: Request, edit: int = 0):
         sites = s.exec(select(m.Site)).all()
         accounts = s.exec(select(m.Account).order_by(m.Account.kind)).all()
         tags = sorted({a.tag for a in accounts if a.tag})
+        ai_conns = s.exec(select(m.AIConnection).order_by(m.AIConnection.id)).all()
     current = next((c for c in campaigns if c.id == edit), None)
-    return render(request, "campaigns.html", campaigns=campaigns, sites={x.id: x for x in sites},
+    return render(request, "campaigns.html", campaigns=campaigns, ai_conns=ai_conns, sites={x.id: x for x in sites},
                   accounts=accounts, tags=tags, kinds=sorted(REGISTRY), current=current,
                   weekdays=["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"])
 
@@ -442,6 +478,8 @@ async def campaign_save(request: Request):
         start_date=_date(f.get("start_date", "")), end_date=_date(f.get("end_date", "")),
         daily_limit=int(f.get("daily_limit") or 4), total_limit=int(f.get("total_limit") or 0),
         extra_instructions=f.get("extra_instructions", ""),
+        text_ai_id=int(f["text_ai_id"]) if f.get("text_ai_id") else None,
+        image_ai_id=int(f["image_ai_id"]) if f.get("image_ai_id") else None,
     )
     with m.session() as s:
         c = s.get(m.Campaign, int(f["id"])) if f.get("id") else m.Campaign(name="", site_id=data["site_id"])
